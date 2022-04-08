@@ -1,0 +1,43 @@
+label	category	extruder	key	type	name	rated_id
+Build Plate Temperature	Material		material_bed_temperature	parameter	material_bed_temperature	
+Printing Temperature	Material	Extruder 1	material_print_temperature	parameter	material_print_temperature	
+Print Speed	Speed	Extruder 1	speed_print	parameter	speed_print	
+			material_producer	env_influence	material_producer	
+			material_color	env_influence	material_color	
+Generate Support	Support		support_enable	parameter	support_enable	
+Support Placement	Support		support_type	parameter	support_type	
+			material_type	env_influence	material_type	
+Layer Height	Quality		layer_height	parameter	layer_height	
+Initial Printing Temperature	Material	Extruder 1	material_initial_print_temperature	parameter	material_initial_print_temperature	
+Final Printing Temperature	Material	Extruder 1	material_final_print_temperature	parameter	material_final_print_temperature	
+			stringing	qual_influence	stringing	891
+			line_misalignment	qual_influence	line_misalignment	898
+			layer_separation	qual_influence	layer_separation	898
+Retraction Distance	Travel	Extruder 1	retraction_amount	parameter	retraction_amount	
+Minimum Extrusion Distance Window	Travel	Extruder 1	retraction_extrusion_window	parameter	retraction_extrusion_window	
+Maximum Retraction Count	Travel	Extruder 1	retraction_count_max	parameter	retraction_count_max	
+			poor_bridging	qual_influence	poor_bridging	906
+Build Plate Adhesion Type	Build Plate Adhesion		adhesion_type	parameter	adhesion_type	
+Tree Support	Experimental		support_tree_enable	parameter	support_tree_enable	
+Retraction Speed	Travel	Extruder 1	retraction_speed	parameter	retraction_speed	
+			blobs	qual_influence	blobs	921
+Retraction Minimum Travel	Travel	Extruder 1	retraction_min_travel	parameter	retraction_min_travel	
+Travel Speed	Speed	Extruder 1	speed_travel	parameter	speed_travel	
+Enable Print Cooling	Cooling	Extruder 1	cool_fan_enabled	parameter	cool_fan_enabled	
+			warping	qual_influence	warping	932
+Tree Support Branch Angle	Experimental	Extruder 1	support_tree_angle	parameter	support_tree_angle	
+Printing Temperature Initial Layer	Material	Extruder 1	material_print_temperature_layer_0	parameter	material_print_temperature_layer_0	
+Initial Layer Speed	Speed	Extruder 1	speed_layer_0	parameter	speed_layer_0	
+			lost_adhesion	qual_influence	lost_adhesion	944
+			under_extrusion	qual_influence	under_extrusion	945
+Tree Support Branch Diameter Angle	Experimental	Extruder 1	support_tree_branch_diameter_angle	parameter	support_tree_branch_diameter_angle	
+Tree Support Collision Resolution	Experimental	Extruder 1	support_tree_collision_resolution	parameter	support_tree_collision_resolution	
+Infill Density	Infill	Extruder 1	infill_sparse_density	parameter	infill_sparse_density	
+Small Feature Speed	Experimental	Extruder 1	small_feature_speed_factor	parameter	small_feature_speed_factor	
+Initial Layer Print Speed	Speed	Extruder 1	speed_print_layer_0	parameter	speed_print_layer_0	
+Regular Fan Speed at Height	Cooling	Extruder 1	cool_fan_full_at_height	parameter	cool_fan_full_at_height	
+Enable Ironing	Shell	Extruder 1	ironing_enabled	parameter	ironing_enabled	
+Iron Only Highest Layer	Shell	Extruder 1	ironing_only_highest_layer	parameter	ironing_only_highest_layer	
+			temperature	env_influence	temperature	
+Build Plate Temperature Initial Layer	Material		material_bed_temperature_layer_0	parameter	material_bed_temperature_layer_0	
+Enable Bridge Settings	Experimental		bridge_settings_enabled	parameter	bridge_settings_enabled	
