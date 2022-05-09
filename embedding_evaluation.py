@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from dataset.ratings_to_param_dataset import RatingsToParamDataset
+from dataset_handler import DatasetHandler
 from embedding_generator import EmbeddingGenerator
 from graph_embeddings.subgraph_embedding import SubGraphEmbedding
 from schemas import TrainConfig
@@ -19,7 +20,7 @@ from schemas import TrainConfig
 
 class EmbeddingEvaluation:
 
-    def __init__(self, distance_measure: str, use_head: bool, path='parameter_prediction_fnn/default_config.json',
+    def __init__(self, distance_measure: str, use_head: bool, path='config/default_config.json',
                  influential_only=False):
         """
         Evaluation method with the following steps:

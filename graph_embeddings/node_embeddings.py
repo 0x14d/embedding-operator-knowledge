@@ -70,17 +70,17 @@ class NodeEmbeddings:
         else:
             file_name_add = '.pkl'
         try:
-            self._edges = pd.read_pickle()
+            self._edges = pd.read_pickle(folder + 'graph_embeddings/graph_data/edges' + file_name_add)
         except (FileNotFoundError):
-            print("File not found: " + folder + 'graph_embeddings/edges' + file_name_add)
+            print("File not found: " + folder + 'graph_embeddings/graph_data/edges' + file_name_add)
         try:
-            self._metadata = pd.read_pickle(folder + 'graph_embeddings/verts' + file_name_add)
+            self._metadata = pd.read_pickle(folder + 'graph_embeddings/graph_data/verts' + file_name_add)
         except (FileNotFoundError):
-            print("File not found: " + folder + 'graph_embeddings/verts' + file_name_add)
+            print("File not found: " + folder + 'graph_embeddings/graph_data/verts' + file_name_add)
         try:
-            self._changed_parameters = pd.read_pickle(folder + 'graph_embeddings/parameters' + file_name_add)
+            self._changed_parameters = pd.read_pickle(folder + 'graph_embeddings/graph_data/parameters' + file_name_add)
         except (FileNotFoundError):
-            print("File not found: " + folder + 'graph_embeddings/parameters' + file_name_add)
+            print("File not found: " + folder + 'graph_embeddings/graph_data/parameters' + file_name_add)
 
     def _preprocess_kg_data(self):
         # adjust edge weights

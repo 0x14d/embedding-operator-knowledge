@@ -2,8 +2,8 @@
 from pandas import DataFrame
 from torch.utils.data.dataset import T_co
 
-from ..dataset_handler import DatasetHandler
-from .prediction_dataset import PredictionDataset
+from dataset_handler import DatasetHandler
+from dataset.prediction_dataset import PredictionDataset
 
 
 class RatingsToParamDataset(PredictionDataset):

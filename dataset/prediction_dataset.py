@@ -9,7 +9,7 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision.transforms import ToTensor
 
-from ..dataset_handler import DatasetHandler
+from dataset_handler import DatasetHandler
 
 
 class PredictionDataset(Dataset, ABC):
