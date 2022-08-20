@@ -1,0 +1,32 @@
+{
+    "main_folder": "",
+    "dataset_type": "ratings2param",
+    "data_provider": "synthetic",
+    "sdg_config": "knowledge_infusion/eval_with_synth_data/configs/sdg/default_config_sdg.json",
+    "model_type": "sss",
+    "seed": 1111,
+    "fnn_config": {
+        "nodes_l1": 32,
+        "batch_size": 1,
+        "epochs": 100,
+        "early_stopping": false,
+        "optimizer": {
+            "name": "SGD",
+            "momentum": 0.62,
+            "weight_decay": 0.0076,
+            "learning_rate": 0.01
+        }
+    },
+    "kil_config": {
+        "nodes": 32,
+        "threshold": 0.001,
+        "max_iter": 150,
+        "optimizer": {
+            "name": "SGD",
+            "momentum": 0.9,
+            "weight_decay": 0.0001,
+            "learning_rate": 0.001
+        }
+    },
+    "k_fold_size": 10
+}

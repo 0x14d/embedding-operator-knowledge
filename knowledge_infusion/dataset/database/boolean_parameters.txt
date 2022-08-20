@@ -1,0 +1,1 @@
+{'cool_fan_enabled', 'support_interface_enable', 'limit_support_retractions', 'support_tree_enable', 'retraction_hop_enabled', 'ironing_only_highest_layer', 'retraction_enable', 'ironing_enabled', 'support_enable', 'bridge_settings_enabled'}
