@@ -1,6 +1,6 @@
 # A Closer Look at Sum-based Embeddings for Knowledge Graphs Containing Procedural Knowledge
 
-**Warning this repository is still highly WIP and will be hugely refactored in the following days**
+**This repository will be refactored in the following days**
 
 This Repository contains the code necessary to reproduce the results shown in the paper, which was submitted to DL4KG.
 
@@ -12,9 +12,9 @@ In order to generate the embeddings execute:
 
 `python -m knowledge_infusion.compare_methods.compare_methods`
 
-Be cautious, this will take a long period of time.
+Be cautious, this will take some time.
 
-### Generating the tables from the embeddings
+### Generating the tables from the results 
 
 After generating the embeddings execute:
 
