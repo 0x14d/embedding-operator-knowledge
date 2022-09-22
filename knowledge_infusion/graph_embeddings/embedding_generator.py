@@ -14,9 +14,10 @@ from ..utils.schemas import TrainConfig
 
 class EmbeddingGenerator:
     # TODO data_provider
-    def __init__(self, config: TrainConfig, embedding_version_path=None, influential_only=False, use_head=False, generate_lut=True, embedding_type="TransH", knowledge_graph_generator= None):
+    def __init__(self, config: TrainConfig, embedding_version_path=None, influential_only=False, use_head=False, generate_lut=True, embedding_type="TransH", knowledge_graph_generator= None, embedding_dim=48, rdf2vec_config = None):
         self.kgtype = config.sdg_config.knowledge_graph_generator.type.value
         self.use_head = use_head
+        self.embedding_dim = embedding_dim
         if embedding_version_path is None:
             version_path = config.kil_config.embedding_folder
         else:
@@ -54,14 +55,14 @@ class EmbeddingGenerator:
 
     def _generate_lut(self, file, file2):
         if self.kgtype == 'basic' or self.kgtype == 'unquantified':
-            skg_lut = DataFrame(np.vstack([SubGraphEmbedding(self.node_embeddings, self.edges.loc[self.edges['from'] == idx], "jaccard", False).embedding.T for idx in self.vertecies.loc[self.vertecies['type'] == 'qual_influence'].index.values]))
+            skg_lut = DataFrame(np.vstack([SubGraphEmbedding(self.node_embeddings, self.edges.loc[self.edges['from'] == idx], "jaccard", False, embedding_dim=self.embedding_dim).embedding.T for idx in self.vertecies.loc[self.vertecies['type'] == 'qual_influence'].index.values]))
         elif self.kgtype == 'quantified_parameters_with_literal':
             relevant_edges = self.edges.loc[self.edges['literal_included'] == 'None']
-            skg_lut = DataFrame(np.vstack([SubGraphEmbedding(self.node_embeddings, relevant_edges[relevant_edges['from'] == idx], "jaccard", False).embedding.T for idx in self.vertecies.loc[self.vertecies['type'] == 'qual_influence'].index.values]))
+            skg_lut = DataFrame(np.vstack([SubGraphEmbedding(self.node_embeddings, relevant_edges[relevant_edges['from'] == idx], "jaccard", False, embedding_dim=self.embedding_dim).embedding.T for idx in self.vertecies.loc[self.vertecies['type'] == 'qual_influence'].index.values]))
         elif 'quantified_param' in self.kgtype:
-            skg_lut = DataFrame(np.vstack([SubGraphEmbedding(self.node_embeddings, None, 'jaccard', False, 2, self.ig, self.kgtype, idx).embedding.T for idx in self.vertecies.loc[self.vertecies['type'] == 'qual_influence'].index.values]))
+            skg_lut = DataFrame(np.vstack([SubGraphEmbedding(self.node_embeddings, None, 'jaccard', False, 2, self.ig, self.kgtype, idx, embedding_dim=self.embedding_dim).embedding.T for idx in self.vertecies.loc[self.vertecies['type'] == 'qual_influence'].index.values]))
         elif self.kgtype == 'quantified_conditions':
-            skg_lut = DataFrame(np.vstack([SubGraphEmbedding(self.node_embeddings, None, 'jaccard', False, 3, self.ig, 'quantified_conditions', idx).embedding.T for idx in self.vertecies.loc[self.vertecies['type'] == 'qual_influence'].index.values]))
+            skg_lut = DataFrame(np.vstack([SubGraphEmbedding(self.node_embeddings, None, 'jaccard', False, 3, self.ig, 'quantified_conditions', idx, embedding_dim=self.embedding_dim).embedding.T for idx in self.vertecies.loc[self.vertecies['type'] == 'qual_influence'].index.values]))
  
         with open(file, 'w') as out_file:
             csv_str = skg_lut.to_csv(index=False, sep='\t', index_label=False, header=False)
@@ -81,7 +82,7 @@ class EmbeddingGenerator:
             file = folder + 'graph_embeddings/skg_embeddings_noHead.tsv'
             file2 = folder + 'graph_embeddings/skg_metadata_noHead.tsv'
         if os.path.isfile(file):
-            return pd.read_csv(file, sep='\t', names=[i for i in range(0, 48)])
+            return pd.read_csv(file, sep='\t', names=[i for i in range(0, self.embedding_dim)])
         else:
             return self._generate_lut(file, file2)
     
@@ -115,20 +116,20 @@ class EmbeddingGenerator:
                             columns=['from', 'to', 'rel', 'experiment'])
             if edges.empty:
                 return None
-            return SubGraphEmbedding(self._node_embeddings, edges, distance_measure, use_head)
+            return SubGraphEmbedding(self._node_embeddings, edges, distance_measure, use_head, embedding_dim=self.embedding_dim)
         
         elif self.kgtype == 'quantified_parameters_with_literal':
             edges = DataFrame(np.vstack([self._edges.loc[self._edges['from'] == index] for index in indices]),
                             columns=['from', 'to', 'rel', 'literal_included'])
             relevant_edges = edges.loc[edges['literal_included'] == 'None']
-            return SubGraphEmbedding(self._node_embeddings, relevant_edges, distance_measure, use_head)
+            return SubGraphEmbedding(self._node_embeddings, relevant_edges, distance_measure, use_head, embedding_dim=self.embedding_dim)
 
         elif self.kgtype == 'quantified_conditions':
             edges = DataFrame(np.vstack([self._edges.loc[self._edges['to'] == index] for index in indices]),
                             columns=['from', 'to', 'rel'])
             if edges.empty:
                 return None
-            return SubGraphEmbedding(self._node_embeddings, edges, distance_measure, False, 3, self.ig, 'quantified_conditions', indices[0])
+            return SubGraphEmbedding(self._node_embeddings, edges, distance_measure, False, 3, self.ig, 'quantified_conditions', indices[0], embedding_dim=self.embedding_dim)
         
         elif self.kgtype == 'quantified_parameters_without_shortcut' or self.kgtype == 'quantified_parameters_with_shortcut':
             # Todo replace with proper Edge generation from within SubGraphEmbedding
@@ -144,7 +145,7 @@ class EmbeddingGenerator:
                             columns=['from', 'to', 'rel', 'literal_included'])
             if edges.empty:
                 return None
-            return SubGraphEmbedding(self.node_embeddings, edges, distance_measure, use_head, 2, self.ig, self.kgtype, indices[0])
+            return SubGraphEmbedding(self.node_embeddings, edges, distance_measure, use_head, 2, self.ig, self.kgtype, indices[0], embedding_dim=self.embedding_dim)
 
 
     def _get_indices_from_rating_names(self, ratings: List[str]) -> List[int]:

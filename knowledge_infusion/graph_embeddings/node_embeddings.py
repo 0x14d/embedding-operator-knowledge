@@ -43,7 +43,7 @@ class NodeEmbeddings:
     _type = str
     _knowledge_graph_generator= KnowledgeGraphGenerator
 
-    def __init__(self, base_folder: str, node_embeddings=None, influential_only=False, use_head=False, type="TransH", kg_type='basic', random_seed='1111', knowledge_graph_generator=None):
+    def __init__(self, base_folder: str, node_embeddings=None, influential_only=False, use_head=False, type="TransH", kg_type='basic', random_seed='1111', knowledge_graph_generator=None, embedding_dim=48, rdf2vec_config = None):
         self._use_head = use_head
         self._influential_only = influential_only
         self._base_folder = base_folder
@@ -53,6 +53,20 @@ class NodeEmbeddings:
         self._knowledge_graph_generator = knowledge_graph_generator
         self._import_knowledge_graph(base_folder)
         self._preprocess_kg_data()
+        self.embedding_dim = embedding_dim
+        self.rdf2vec_config = rdf2vec_config
+
+        self._epochs = {
+            "TransE": 400,
+            "ComplEx": 1000,
+            "ComplExLiteral": 650,
+            "RotatE": 700,
+            "DistMult": 800,
+            "DistMultLiteralGated": 200,
+            "BoxE": 1500,
+            "RDF2Vec": 1000
+        }
+
         if node_embeddings is None:
             if os.path.isfile(base_folder + 'graph_embeddings/node_embeddings.tsv'):
                self.import_tsv(base_folder + 'graph_embeddings/')
@@ -192,10 +206,7 @@ class NodeEmbeddings:
         :param folder:
         :return:
         """
-        if self._use_head:
-            emb_dim = 48
-        else:
-            emb_dim = 48
+        emb_dim = self.embedding_dim
         self._embeddings = pd.read_csv(folder + 'node_embeddings.tsv', sep='\t', names=[i for i in range(0, emb_dim)])
         self._metadata = pd.read_csv(folder + 'node_embedding_metadata.tsv', sep='\t')
 
@@ -304,16 +315,12 @@ class NodeEmbeddings:
         return (np_rel, np_lit)
 
     def model_chooser(self, factory):
-        if self._use_head:
-            k = 1
-        else:
-            k = 1
         
         if self._type == "TransE":
             from pykeen.models import TransE
             model=TransE(
                 triples_factory=factory,
-                embedding_dim=int(48*k),
+                embedding_dim=self.embedding_dim,
                 random_seed=self._random_seed
                 )
 
@@ -321,7 +328,7 @@ class NodeEmbeddings:
             from pykeen.models import ComplEx
             model=ComplEx(
                 triples_factory=factory,
-                embedding_dim=int(48*k),
+                embedding_dim=self.embedding_dim,
                 random_seed=self._random_seed
             )
 
@@ -330,7 +337,7 @@ class NodeEmbeddings:
             from pykeen.models import ComplExLiteral
             model=ComplExLiteral(
                 triples_factory=factory,
-                embedding_dim=int(48*k),
+                embedding_dim=self.embedding_dim,
                 random_seed=self._random_seed
             )
         
@@ -338,7 +345,7 @@ class NodeEmbeddings:
             from pykeen.models import TransH
             model=TransH(
                 triples_factory=factory,
-                embedding_dim=int(48*k),
+                embedding_dim=self.embedding_dim,
                 random_seed=self._random_seed
             )
 
@@ -346,7 +353,7 @@ class NodeEmbeddings:
             from pykeen.models import DistMult
             model=DistMult(
                 triples_factory=factory,
-                embedding_dim=int(48*k),
+                embedding_dim=self.embedding_dim,
                 random_seed=self._random_seed
             )
 
@@ -354,7 +361,7 @@ class NodeEmbeddings:
             from pykeen.models import RotatE
             model=RotatE(
                 triples_factory=factory,
-                embedding_dim=int(48*k),
+                embedding_dim=self.embedding_dim,
                 random_seed=self._random_seed
             )
 
@@ -362,7 +369,7 @@ class NodeEmbeddings:
             from pykeen.models import BoxE
             model = BoxE(
                 triples_factory=factory,
-                embedding_dim=int(48*k),
+                embedding_dim=self.embedding_dim,
                 random_seed=self._random_seed
             )
         
@@ -370,7 +377,7 @@ class NodeEmbeddings:
             from pykeen.models import DistMultLiteralGated
             model=DistMultLiteralGated(
                 triples_factory=factory,
-                embedding_dim=48,
+                embedding_dim=self.embedding_dim,
                 random_seed=self._random_seed
             )
         return model
@@ -472,7 +479,7 @@ class NodeEmbeddings:
 
         _ = training_loop.train(
             triples_factory=factory,
-            num_epochs=750,
+            num_epochs=self._epochs[self._type],
         )
 
         # Get the embeddings
@@ -484,6 +491,13 @@ class NodeEmbeddings:
         from pyrdf2vec import RDF2VecTransformer
         from pyrdf2vec.embedders import Word2Vec
         from pyrdf2vec.walkers import RandomWalker
+
+        if self.rdf2vec_config == None:
+            number_of_walks = 10,
+            walker = 'random'
+        else:
+            number_of_walks = self.rdf2vec_config['number_of_walks']
+            walker = self.rdf2vec_config['walker']
 
         os.environ['PYTHONHASHSEED'] = str(self._random_seed)
         print("env set")
@@ -514,11 +528,14 @@ class NodeEmbeddings:
         for index, row in self.metadata.iterrows():
             entities.append("http://pyRDF2Vec#" + str(self.metadata.loc[index]['name']))
 
+        if walker == 'random':
+            walkers=[RandomWalker(4, number_of_walks, with_reverse=False, n_jobs=2, random_state=self._random_seed)]
+
         transformer = RDF2VecTransformer(
-            Word2Vec(epochs=750,
-                    vector_size=int(48*k),
+            Word2Vec(epochs=self._epochs[self._type],
+                    vector_size=self.embedding_dim,
                     workers=1),
-            walkers=[RandomWalker(4, 10, with_reverse=False, n_jobs=2, random_state=self._random_seed)],
+            walkers=walkers,
             # verbose=1
         )
         # Get our embeddings.

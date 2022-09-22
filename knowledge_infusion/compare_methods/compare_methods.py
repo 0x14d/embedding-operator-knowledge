@@ -16,7 +16,7 @@ from knowledge_infusion.embedding_evaluation import EmbeddingEvaluation
 EMBEDDING_TYPES = ["TransE", "ComplEx", "ComplExLiteral", "RotatE", "DistMult", "DistMultLiteralGated", "BoxE", "rdf2vec"]
 HEAD_VALS = [True, False]
 DISTANCE_METRICS = ['euclidean, jaccard']
-TIMES = 3
+TIMES = 6
 
 class CompareMethods():
     _trainConfig: TrainConfig
@@ -58,6 +58,45 @@ class CompareMethods():
                     kgg_args = pickle.load(in_f)
                 current_kgg = current_kgg_class(kgg_args)
                 for embedding in EMBEDDING_TYPES:
+
+                    # Stuff to try
+                    if i == 0:
+                        embedding_dim = 8
+                        rdf2vec_config = None
+                    if i == 1:
+                        embedding_dim = 24
+                        rdf2vec_config = None
+                    if i == 2:
+                        embedding_dim = 48
+                        rdf2vec_config = None
+                    if i == 3:
+                        embedding_dim = 48
+                        rdf2vec_config = {
+                            'walker': 'random',
+                            'number_of_walks': 100
+                        }
+                        if embedding != 'rdf2vec':
+                            continue
+                    if i == 4:
+                        embedding_dim= 48
+                        rdf2vec_config = {
+                            'walker': 'random',
+                            'number_of_walks': 300
+                        }
+                        if embedding != 'rdf2vec':
+                            continue
+                    if i == 5:
+                        embedding_dim=48
+                        rdf2vec_config = {
+                            'walker': 'random',
+                            'number_of_walks': 500
+                        }
+                        if embedding != 'rdf2vec':
+                            continue
+                    else:
+                        embedding_dim = 48
+                        rdf2vec_config = None
+
                     for head in HEAD_VALS:
                         try:
                             self._embedding_type = embedding
@@ -81,7 +120,7 @@ class CompareMethods():
 
                                 self._generate_folder_structur(head, root_folder)
 
-                                emb = EmbeddingGenerator(self._train_config, generate_lut=True, embedding_type=embedding, use_head=head, knowledge_graph_generator=current_kgg)
+                                emb = EmbeddingGenerator(self._train_config, generate_lut=True, embedding_type=embedding, use_head=head, knowledge_graph_generator=current_kgg, embedding_dim=embedding_dim, rdf2vec_config=rdf2vec_config)
                                 
                                 matches_at_k_eval(self._train_config, embedding, knowledge_graph_generators, head, comp_results)
                         except Exception as e:
