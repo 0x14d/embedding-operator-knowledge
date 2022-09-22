@@ -71,7 +71,6 @@ class CompareMethods():
 
 
     def __init__(self):
-        os.chdir('C:/Users/phillip.strobl/Documents/GitHub/embedding-operator-knowledge')
         self._sgdConfig = SdgConfig.create_config('knowledge_infusion/eval_with_synth_data/configs/sdg/default_config_sdg.json')
 
 
