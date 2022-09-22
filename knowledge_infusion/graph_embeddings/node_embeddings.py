@@ -493,7 +493,7 @@ class NodeEmbeddings:
         from pyrdf2vec.walkers import RandomWalker
 
         if self.rdf2vec_config == None:
-            number_of_walks = 10,
+            number_of_walks = 10
             walker = 'random'
         else:
             number_of_walks = self.rdf2vec_config['number_of_walks']
