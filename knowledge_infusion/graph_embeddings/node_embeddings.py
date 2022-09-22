@@ -22,9 +22,7 @@ import pickle
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 from data_provider.synthetic_data_generation.modules.knowledge_graph_generators.abstract_knowledge_graph_generator import KnowledgeGraphGenerator
-from knowledge_extraction.graph_aggregation import GraphAggregation, Graph
-import experiment_definition as ed
-import knowledge_graph as kg
+from knowledge_extraction.graph_aggregation import Graph
 
 
 class NodeEmbeddings:
@@ -56,6 +54,7 @@ class NodeEmbeddings:
         self.embedding_dim = embedding_dim
         self.rdf2vec_config = rdf2vec_config
 
+        # Define the training epochs for the different embedding types
         self._epochs = {
             "TransE": 400,
             "ComplEx": 1000,
@@ -382,63 +381,10 @@ class NodeEmbeddings:
             )
         return model
 
-    def train_embeddings(self):
-        """
-        Train Node embeddings with the torchkge framework
-        :return:
-        """
-        # Define some hyper-parameters for training
-        if self._use_head:
-            emb_dim = 23
-        else:
-            emb_dim = 46
-        lr = 0.0004
-        n_epochs = 1000
-        b_size = 4
-        margin = 0.5
-
-        # Define the model and criterion
-        model = TransHModel(emb_dim, self._knowledge_graph.n_ent, self._knowledge_graph.n_rel)
-        criterion = MarginLoss(margin)
-
-        # Move everything to CUDA if available
-        #if cuda is not None:
-        #    if cuda.is_available():
-         #       cuda.empty_cache()
-          #      model.cuda()
-           #     criterion.cuda()
-
-        # Define the torch optimizer to be used
-        optimizer = Adam(model.parameters(), lr=lr, weight_decay=1e-5)
-
-        sampler = BernoulliNegativeSampler(self._knowledge_graph)
-        dataloader = DataLoader(self._knowledge_graph, batch_size=b_size)
-
-        iterator = tqdm(range(n_epochs), unit='epoch')
-        for epoch in iterator:
-            running_loss = 0.0
-            for i, batch in enumerate(dataloader):
-                h, t, r = batch[0], batch[1], batch[2]
-                n_h, n_t = sampler.corrupt_batch(h, t, r)
-
-                optimizer.zero_grad()
-
-                # forward + backward + optimize
-                pos, neg = model(h, t, n_h, n_t, r)
-                loss = criterion(pos, neg)
-                loss.backward()
-                optimizer.step()
-
-                running_loss += loss.item()
-            iterator.set_description(
-                'Epoch {} | mean loss: {:.5f}'.format(epoch + 1,
-                                                      running_loss / len(dataloader)))
-
-        model.normalize_parameters()
-        self._embeddings = model.get_embeddings()
-        self._save_embeddings_and_metadata()
-
     def train_embeddings_pykeen(self):
+        """
+        This methods trains the embeddings with the embedding method specified when creating the class
+        """
 
         if self._type == "rdf2vec":
             self.train_rdf2vec()
@@ -551,6 +497,15 @@ class NodeEmbeddings:
         p.join()
         self.embeddings = [tensor(embeddings)]
         self._save_embeddings_and_metadata()
+
+        # Save the transformer
+        to_save = {
+            'kg': CUSTOM_KG,
+            'ents': entities
+        }
+        print(self._base_folder)
+        transformer.save(self._base_folder + 'rdf2vectf')
+        #with open(self._base_folder + 'rdf2vecdata.pkl', 'wb'):
 
 
 def fit_transform_wrapper(transformer, kg, ents, q):

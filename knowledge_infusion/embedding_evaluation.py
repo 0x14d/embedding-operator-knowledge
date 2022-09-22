@@ -27,7 +27,7 @@ from knowledge_extraction.graph_aggregation import GraphAggregation
 class EmbeddingEvaluation:
 
     def __init__(self, distance_measure: str, use_head: bool, path='knowledge_infusion/config/default_config.json',
-                 influential_only=False, ratings: Optional[List[str]] = None, train_config_obj = None, embedding_type= 'TransH', knowledge_graph_generator=None):
+                 influential_only=False, ratings: Optional[List[str]] = None, train_config_obj = None, embedding_type= 'TransH', knowledge_graph_generator=None, embedding_dim=48):
         """
         Helper Functions to evaluate the embeddings
         """
@@ -39,7 +39,7 @@ class EmbeddingEvaluation:
         else:
             self._config: TrainConfig = TrainConfig.parse_file(config_path)
         self._dataset_handler = None #DatasetHandler('ratings2param', self._config.data_provider)
-        self._emb_generator = EmbeddingGenerator(self._config, influential_only=influential_only, use_head=use_head, generate_lut=False, embedding_type=embedding_type, knowledge_graph_generator=knowledge_graph_generator)
+        self._emb_generator = EmbeddingGenerator(self._config, influential_only=influential_only, use_head=use_head, generate_lut=False, embedding_type=embedding_type, knowledge_graph_generator=knowledge_graph_generator, embedding_dim=embedding_dim)
         self.verts = self._emb_generator.vertecies
         if ratings is None:
             self._ratings = [idx for idx in self.verts[self.verts['type'] == 'qual_influence']['name'] if

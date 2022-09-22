@@ -30,7 +30,9 @@ class EmbeddingGenerator:
             type=embedding_type,
             kg_type=self.kgtype,
             random_seed=config.seed,
-            knowledge_graph_generator=knowledge_graph_generator
+            knowledge_graph_generator=knowledge_graph_generator,
+            embedding_dim=embedding_dim,
+            rdf2vec_config=rdf2vec_config
         )
         self._vertecies: DataFrame = self._node_embeddings._metadata
         self._edges: DataFrame = self._node_embeddings._edges

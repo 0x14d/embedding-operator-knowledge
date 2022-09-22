@@ -18,6 +18,48 @@ HEAD_VALS = [True, False]
 DISTANCE_METRICS = ['euclidean, jaccard']
 TIMES = 6
 
+run_configs = [
+    {
+        "embedding_dim": 8,
+        "rdf2vec_config": None,
+        "name": 'emb-dim-8'
+    },
+    {
+        "embedding_dim": 24,
+        "rdf2vec_config": None,
+        'name': 'emb-dim-24'
+    },
+    {
+        "embedding_dim": 48,
+        "rdf2vec_config": None,
+        'name': 'default'
+    },
+    {
+        "embedding_dim": 48,
+        "rdf2vec_config": {
+            'walker': 'random',
+            'number_of_walks': 100
+        },
+        'name': '100walks'
+    },
+    {
+        "embedding_dim": 48,
+        "rdf2vec_config": {
+            'walker': 'random',
+            'number_of_walks': 300
+        },
+        'name': '300walks'
+    },
+    {
+        "embedding_dim": 48,
+        "rdf2vec_config": {
+            'walker': 'random',
+            'number_of_walks': 500
+        },
+        'name': '500walks'
+    },
+]
+
 class CompareMethods():
     _trainConfig: TrainConfig
     _sgdConfig: SdgConfig
@@ -29,6 +71,7 @@ class CompareMethods():
 
 
     def __init__(self):
+        os.chdir('C:/Users/phillip.strobl/Documents/GitHub/embedding-operator-knowledge')
         self._sgdConfig = SdgConfig.create_config('knowledge_infusion/eval_with_synth_data/configs/sdg/default_config_sdg.json')
 
 
@@ -41,94 +84,62 @@ class CompareMethods():
         if not os.path.isdir("knowledge_infusion/compare_methods/results/"):
             os.makedirs("knowledge_infusion/compare_methods/results/")
         
+        for run_config in run_configs:
+            run_folder = "knowledge_infusion/compare_methods/" + run_config['name'] + "/"
+            if not os.path.isdir(run_folder):
+                os.makedirs(run_folder)
+            # For each available:
+            #   - Knowledge Graph Generator
+            #   - Embedding Method
+            #   - Headstatus
+            for i in range(TIMES):
+                comp_results = [] # Array to store the results in
 
-        # For each available:
-        #   - Knowledge Graph Generator
-        #   - Embedding Method
-        #   - Headstatus
-        for i in range(TIMES):
-            comp_results = [] # Array to store the results in
+                root_folder = run_folder + "iteration" + str(i) + "/"
+                if not os.path.isdir(root_folder):
+                    os.makedirs(root_folder)
+                for knowledge_graph_generators in KnowledgeGraphGeneratorType:
+                    current_kgg_class = knowledge_graph_generators.get_configuration().get_generator_class()
+                    with open("example_data/kgg_args.pickle", 'rb') as in_f:
+                        kgg_args = pickle.load(in_f)
+                    current_kgg = current_kgg_class(kgg_args)
+                    for embedding in EMBEDDING_TYPES:
+                        # Stuff to try
+                        embedding_dim= run_config['embedding_dim']
+                        rdf2vec_config= run_config['rdf2vec_config']
 
-            root_folder = "knowledge_infusion/compare_methods/results/iteration" + str(i) + "/"
-            if not os.path.isdir(root_folder):
-                os.makedirs(root_folder)
-            for knowledge_graph_generators in KnowledgeGraphGeneratorType:
-                current_kgg_class = knowledge_graph_generators.get_configuration().get_generator_class()
-                with open("example_data/kgg_args.pickle", 'rb') as in_f:
-                    kgg_args = pickle.load(in_f)
-                current_kgg = current_kgg_class(kgg_args)
-                for embedding in EMBEDDING_TYPES:
+                        for head in HEAD_VALS:
+                            try:
+                                self._embedding_type = embedding
+                                print("________________________________________________")
+                                print("Currently: " + knowledge_graph_generators.value)
+                                print("Using Embeding Method:" + embedding + " | Head: " + str(head))
+                                self._embedding_type = embedding
+                                for config in configs:
+                                    # Skip quantified conditions since matches@k is not a good metric for them
+                                    if knowledge_graph_generators.value == 'quantified_conditions':
+                                        continue
+                                    kgg_config = KnowledgeGraphGeneratorType(knowledge_graph_generators)
+                                    self._sgdConfig.knowledge_graph_generator = kgg_config.get_configuration()
 
-                    # Stuff to try
-                    if i == 0:
-                        embedding_dim = 8
-                        rdf2vec_config = None
-                    if i == 1:
-                        embedding_dim = 24
-                        rdf2vec_config = None
-                    if i == 2:
-                        embedding_dim = 48
-                        rdf2vec_config = None
-                    if i == 3:
-                        embedding_dim = 48
-                        rdf2vec_config = {
-                            'walker': 'random',
-                            'number_of_walks': 100
-                        }
-                        if embedding != 'rdf2vec':
-                            continue
-                    if i == 4:
-                        embedding_dim= 48
-                        rdf2vec_config = {
-                            'walker': 'random',
-                            'number_of_walks': 300
-                        }
-                        if embedding != 'rdf2vec':
-                            continue
-                    if i == 5:
-                        embedding_dim=48
-                        rdf2vec_config = {
-                            'walker': 'random',
-                            'number_of_walks': 500
-                        }
-                        if embedding != 'rdf2vec':
-                            continue
-                    else:
-                        embedding_dim = 48
-                        rdf2vec_config = None
+                                    # Provide train config
+                                    self._train_config = TrainConfig.parse_file(config)
+                                    self._train_config.sdg_config = self._sgdConfig
+                                    self._train_config.id = uuid.uuid1()
+                                    self._train_config.time = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+                                    self._train_config.seed = self._train_config.seed + (i * 5)
 
-                    for head in HEAD_VALS:
-                        try:
-                            self._embedding_type = embedding
-                            print("________________________________________________")
-                            print("Currently: " + knowledge_graph_generators.value)
-                            print("Using Embeding Method:" + embedding + " | Head: " + str(head))
-                            self._embedding_type = embedding
-                            for config in configs:
-                                # Skip quantified conditions since matches@k is not a good metric for them
-                                if knowledge_graph_generators.value == 'quantified_conditions':
-                                    continue
-                                kgg_config = KnowledgeGraphGeneratorType(knowledge_graph_generators)
-                                self._sgdConfig.knowledge_graph_generator = kgg_config.get_configuration()
+                                    self._generate_folder_structur(head, root_folder)
 
-                                # Provide train config
-                                self._train_config = TrainConfig.parse_file(config)
-                                self._train_config.sdg_config = self._sgdConfig
-                                self._train_config.id = uuid.uuid1()
-                                self._train_config.time = datetime.datetime.now().strftime("%Y%m%d_%H%M")
-                                self._train_config.seed = self._train_config.seed + (i * 5)
+                                    emb = EmbeddingGenerator(self._train_config, generate_lut=True, embedding_type=embedding, use_head=head, knowledge_graph_generator=current_kgg, embedding_dim=embedding_dim, rdf2vec_config=rdf2vec_config)
 
-                                self._generate_folder_structur(head, root_folder)
-
-                                emb = EmbeddingGenerator(self._train_config, generate_lut=True, embedding_type=embedding, use_head=head, knowledge_graph_generator=current_kgg, embedding_dim=embedding_dim, rdf2vec_config=rdf2vec_config)
-                                
-                                matches_at_k_eval(self._train_config, embedding, knowledge_graph_generators, head, comp_results)
-                        except Exception as e:
-                            print(e)
-                            print(traceback.format_exc())
-            with open(root_folder + 'results.pickle', 'wb') as out_f:
-                pickle.dump(comp_results, out_f)
-            print("All embeddings and evaluations succesfully completed. Iteration: " + str(i))
+                                    matches_at_k_eval(self._train_config, embedding, knowledge_graph_generators, head, comp_results,embedding_dim=embedding_dim)
+                            except Exception as e:
+                                print(e)
+                                print(traceback.format_exc())
+                with open(root_folder + 'results.pickle', 'wb') as out_f:
+                    pickle.dump(comp_results, out_f)
+                print("All embeddings and evaluations succesfully completed. Iteration: " + str(i))
 
 
 
@@ -161,7 +172,7 @@ def chunks(l, n):
     for i in range(0, len(l), n):
         yield l[i:i + n]
 
-def matches_at_k_eval(config: TrainConfig, embedding, kgg, head, compr):
+def matches_at_k_eval(config: TrainConfig, embedding, kgg, head, compr, embedding_dim=48):
 
     if head:
         res_file = config.main_folder + "matches_at_k.pickle"
@@ -175,8 +186,8 @@ def matches_at_k_eval(config: TrainConfig, embedding, kgg, head, compr):
             compr.append(element)
         return
 
-    num_matches_3_euc_whead, num_matches_5_euc_whead = _get_matches('euclidean', head, True, config, embedding)
-    num_matches_3_jac_whead, num_matches_5_jac_whead = _get_matches('jaccard', head, True, config, embedding)
+    num_matches_3_euc_whead, num_matches_5_euc_whead = _get_matches('euclidean', head, True, config, embedding, embedding_dim=embedding_dim)
+    num_matches_3_jac_whead, num_matches_5_jac_whead = _get_matches('jaccard', head, True, config, embedding,embedding_dim=embedding_dim)
 
     matches = [
         num_matches_3_jac_whead, num_matches_5_jac_whead,
@@ -211,14 +222,15 @@ def matches_at_k_eval(config: TrainConfig, embedding, kgg, head, compr):
     
     print("FINISHED " + embedding + " with " + kgg)
 
-def _get_matches(metric: str, use_head:bool, single_node:bool, config: TrainConfig, emb):
+def _get_matches(metric: str, use_head:bool, single_node:bool, config: TrainConfig, emb, embedding_dim=48):
     
     emb_eval = EmbeddingEvaluation(
         distance_measure=metric,
         use_head=use_head,
         ratings=None,
         train_config_obj=config,
-        embedding_type=emb
+        embedding_type=emb,
+        embedding_dim=embedding_dim
     )
 
     if single_node:
