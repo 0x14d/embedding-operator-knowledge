@@ -64,7 +64,7 @@ class NodeEmbeddings:
             "DistMult": 800,
             "DistMultLiteralGated": 200,
             "BoxE": 1500,
-            "RDF2Vec": 1000
+            "rdf2vec": 1000
         }
 
         if node_embeddings is None:
