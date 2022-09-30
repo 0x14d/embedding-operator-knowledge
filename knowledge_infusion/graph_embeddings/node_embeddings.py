@@ -56,12 +56,12 @@ class NodeEmbeddings:
 
         # Define the training epochs for the different embedding types
         self._epochs = {
-            "TransE": 400,
-            "ComplEx": 1000,
-            "ComplExLiteral": 650,
-            "RotatE": 700,
-            "DistMult": 800,
-            "DistMultLiteralGated": 200,
+            "TransE": 750,
+            "ComplEx": 750,
+            "ComplExLiteral": 750,
+            "RotatE": 750,
+            "DistMult": 750,
+            "DistMultLiteralGated": 750,
             "BoxE": 1500,
             "rdf2vec": 1000
         }
@@ -436,7 +436,7 @@ class NodeEmbeddings:
         from pyrdf2vec.graphs import KG, Vertex
         from pyrdf2vec import RDF2VecTransformer
         from pyrdf2vec.embedders import Word2Vec
-        from pyrdf2vec.walkers import RandomWalker
+        from pyrdf2vec.walkers import RandomWalker, SplitWalker
 
         if self.rdf2vec_config == None:
             number_of_walks = 10
@@ -444,7 +444,7 @@ class NodeEmbeddings:
         else:
             number_of_walks = self.rdf2vec_config['number_of_walks']
             walker = self.rdf2vec_config['walker']
-
+        print(number_of_walks)
         os.environ['PYTHONHASHSEED'] = str(self._random_seed)
         print("env set")
         if self._use_head:
@@ -454,42 +454,40 @@ class NodeEmbeddings:
 
         # Prepare data for pyrdf2vec
         relations, literals = self.split_off_literals()
+        entities = []
         
         URL = "http://pyRDF2Vec"
         CUSTOM_KG = KG()
         for row in relations:
             subj = Vertex(f"{URL}#{row[0]}")
+            entities.append("http://pyRDF2Vec#" + row[0])
             obj = Vertex((f"{URL}#{row[2]}"))
+            entities.append("http://pyRDF2Vec#" + row[2])
             pred = Vertex((f"{URL}#{row[1]}"), predicate=True, vprev=subj, vnext=obj)
-            CUSTOM_KG.add_walk(subj, pred, obj)
 
-        if self._kgtype == 'quantified_parameters_with_literal':
-            for row in literals:
-                subj = Vertex(f"{URL}#{row[0]}")
-                obj = Vertex((f"{URL}#{row[2]}"))
-                pred = Vertex((f"{URL}#{row[1]}"), predicate=True, vprev=subj, vnext=obj)
-                CUSTOM_KG.add_walk(subj, pred, obj)
+            CUSTOM_KG.add_walk(subj, pred, obj)
 
         entities = []
         for index, row in self.metadata.iterrows():
-            entities.append("http://pyRDF2Vec#" + str(self.metadata.loc[index]['name']))
+            if self._kgtype != 'quantified_parameters_with_literal' or  self.metadata.loc[index]['type'] is not None:
+                entities.append("http://pyRDF2Vec#" + str(self.metadata.loc[index]['name']))
 
         if walker == 'random':
-            walkers=[RandomWalker(4, number_of_walks, with_reverse=False, n_jobs=2, random_state=self._random_seed)]
+            walkers=[RandomWalker(max_depth=4, max_walks=100, with_reverse=False, n_jobs=2, random_state=self._random_seed)]
 
         transformer = RDF2VecTransformer(
             Word2Vec(epochs=self._epochs[self._type],
                     vector_size=self.embedding_dim,
                     workers=1),
             walkers=walkers,
-            # verbose=1
+            verbose=2
         )
         # Get our embeddings.
         q = mp.Queue()
         try:
             mp.set_start_method('spawn')
         except:
-            print("err")
+            pass
         # Do the embedding in another thread in order for change to PYTHONHASHSEED to work correctly
         p = mp.Process(target=fit_transform_wrapper, args=(transformer, CUSTOM_KG, entities, q,))
         p.start()
@@ -498,22 +496,10 @@ class NodeEmbeddings:
         self.embeddings = [tensor(embeddings)]
         self._save_embeddings_and_metadata()
 
-        # Save the transformer
-        to_save = {
-            'kg': CUSTOM_KG,
-            'ents': entities
-        }
-        print(self._base_folder)
-        transformer.save(self._base_folder + 'rdf2vectf')
-        #with open(self._base_folder + 'rdf2vecdata.pkl', 'wb'):
-
 
 def fit_transform_wrapper(transformer, kg, ents, q):
-    print("inside")
     embeddings, literals = transformer.fit_transform(kg, ents)
-    print("before put")
     q.put((embeddings, literals))
-    print("after put")
     return
 
 
