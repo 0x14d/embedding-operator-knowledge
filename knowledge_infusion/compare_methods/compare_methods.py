@@ -143,7 +143,7 @@ class CompareMethods():
 
                                     emb = EmbeddingGenerator(self._train_config, generate_lut=True, embedding_type=embedding, use_head=head, knowledge_graph_generator=current_kgg, embedding_dim=embedding_dim, rdf2vec_config=rdf2vec_config)
                                     
-                                    if GEN_RDF and embedding == 'TransE' and i == 0 and run_config['name'] == 'default' and head:
+                                    if GEN_RDF and embedding == EMBEDDING_TYPES[0] and i == 0 and run_config['name'] == 'default' and head:
                                         print("Generating RDF Graph")
                                         graph_dir = root_folder + "rdf_graphs/"
 
