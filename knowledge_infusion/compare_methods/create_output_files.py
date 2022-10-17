@@ -62,10 +62,13 @@ class TableCreator:
                 x = 1
             else:
                 x = 0
-            if INCLUDE_STD:
-                df.at[entry.embedding, (entry.representation.value, x, entry.distance_measure)] = str(entry.mean.round(2)) + ' ± ' + str(round(entry.std[0],2))
-            else:
-                df.at[entry.embedding, (entry.representation.value, x, entry.distance_measure)] = entry.mean.round(2)
+            try:
+                if INCLUDE_STD:
+                    df.at[entry.embedding, (entry.representation.value, x, entry.distance_measure)] = str(entry.mean.round(2)) + ' ± ' + str(round(entry.std[0],2))
+                else:
+                    df.at[entry.embedding, (entry.representation.value, x, entry.distance_measure)] = entry.mean.round(2)
+            except:
+                    df.at[entry.embedding,(entry.representation.value, x, entry.distance_measure)] = "NaN"
         return df
 
     @staticmethod
@@ -93,6 +96,8 @@ class TableCreator:
             ending = "_with_std"
         else:
             ending = ""
+
+        ending += "_" + data_folder.split('/')[3]
 
 
         df3 = TableCreator.create_df(k3)
@@ -163,28 +168,31 @@ class TableCreator:
 
 
 if __name__ == "__main__":
-    base_path = "knowledge_infusion/compare_methods/results/"
-    number_iters = len(glob.glob(base_path + 'iteration*'))
+    result_path = "knowledge_infusion/compare_methods/results/*/"
+    exps = glob.glob(result_path)
+    print(glob.glob(result_path))
+    for base_path in exps:
+        number_iters = len(glob.glob(base_path + 'iteration*'))
 
-    paths = []
-    for i in range(number_iters):
-        paths.append(base_path + "iteration" + str(i) + "/")
+        paths = []
+        for i in range(number_iters):
+            paths.append(base_path + "iteration" + str(i) + "/")
 
-    for path in paths:  
-        TableCreator.create_tables_from_evaluation_result_pickle(path)
-    
-    TableCreator.combine_multiple_table(paths, base_path)
+        for path in paths:  
+            TableCreator.create_tables_from_evaluation_result_pickle(path)
+        
+        TableCreator.combine_multiple_table(paths, base_path)
 
-    INCLUDE_STD = not INCLUDE_STD
+        INCLUDE_STD = not INCLUDE_STD
 
-    base_path = "knowledge_infusion/compare_methods/results/"
+        #base_path = "knowledge_infusion/compare_methods/results/"
 
-    paths = []
-    for i in range(number_iters):
-        paths.append(base_path + "iteration" + str(i) + "/")
+        paths = []
+        for i in range(number_iters):
+            paths.append(base_path + "iteration" + str(i) + "/")
 
-    for path in paths:  
-        TableCreator.create_tables_from_evaluation_result_pickle(path)
-    
-    TableCreator.combine_multiple_table(paths, base_path)
+        for path in paths:  
+            TableCreator.create_tables_from_evaluation_result_pickle(path)
+        
+        TableCreator.combine_multiple_table(paths, base_path)
 

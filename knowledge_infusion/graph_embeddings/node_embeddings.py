@@ -22,9 +22,7 @@ import pickle
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 from data_provider.synthetic_data_generation.modules.knowledge_graph_generators.abstract_knowledge_graph_generator import KnowledgeGraphGenerator
-from knowledge_extraction.graph_aggregation import GraphAggregation, Graph
-import experiment_definition as ed
-import knowledge_graph as kg
+from knowledge_extraction.graph_aggregation import Graph
 
 
 class NodeEmbeddings:
@@ -43,7 +41,7 @@ class NodeEmbeddings:
     _type = str
     _knowledge_graph_generator= KnowledgeGraphGenerator
 
-    def __init__(self, base_folder: str, node_embeddings=None, influential_only=False, use_head=False, type="TransH", kg_type='basic', random_seed='1111', knowledge_graph_generator=None):
+    def __init__(self, base_folder: str, node_embeddings=None, influential_only=False, use_head=False, type="TransH", kg_type='basic', random_seed='1111', knowledge_graph_generator=None, embedding_dim=48, rdf2vec_config = None):
         self._use_head = use_head
         self._influential_only = influential_only
         self._base_folder = base_folder
@@ -53,6 +51,21 @@ class NodeEmbeddings:
         self._knowledge_graph_generator = knowledge_graph_generator
         self._import_knowledge_graph(base_folder)
         self._preprocess_kg_data()
+        self.embedding_dim = embedding_dim
+        self.rdf2vec_config = rdf2vec_config
+
+        # Define the training epochs for the different embedding types
+        self._epochs = {
+            "TransE": 750,
+            "ComplEx": 750,
+            "ComplExLiteral": 750,
+            "RotatE": 750,
+            "DistMult": 750,
+            "DistMultLiteralGated": 750,
+            "BoxE": 1500,
+            "rdf2vec": 1000
+        }
+
         if node_embeddings is None:
             if os.path.isfile(base_folder + 'graph_embeddings/node_embeddings.tsv'):
                self.import_tsv(base_folder + 'graph_embeddings/')
@@ -192,10 +205,7 @@ class NodeEmbeddings:
         :param folder:
         :return:
         """
-        if self._use_head:
-            emb_dim = 48
-        else:
-            emb_dim = 48
+        emb_dim = self.embedding_dim
         self._embeddings = pd.read_csv(folder + 'node_embeddings.tsv', sep='\t', names=[i for i in range(0, emb_dim)])
         self._metadata = pd.read_csv(folder + 'node_embedding_metadata.tsv', sep='\t')
 
@@ -304,16 +314,12 @@ class NodeEmbeddings:
         return (np_rel, np_lit)
 
     def model_chooser(self, factory):
-        if self._use_head:
-            k = 1
-        else:
-            k = 1
         
         if self._type == "TransE":
             from pykeen.models import TransE
             model=TransE(
                 triples_factory=factory,
-                embedding_dim=int(48*k),
+                embedding_dim=self.embedding_dim,
                 random_seed=self._random_seed
                 )
 
@@ -321,7 +327,7 @@ class NodeEmbeddings:
             from pykeen.models import ComplEx
             model=ComplEx(
                 triples_factory=factory,
-                embedding_dim=int(48*k),
+                embedding_dim=self.embedding_dim,
                 random_seed=self._random_seed
             )
 
@@ -330,7 +336,7 @@ class NodeEmbeddings:
             from pykeen.models import ComplExLiteral
             model=ComplExLiteral(
                 triples_factory=factory,
-                embedding_dim=int(48*k),
+                embedding_dim=self.embedding_dim,
                 random_seed=self._random_seed
             )
         
@@ -338,7 +344,7 @@ class NodeEmbeddings:
             from pykeen.models import TransH
             model=TransH(
                 triples_factory=factory,
-                embedding_dim=int(48*k),
+                embedding_dim=self.embedding_dim,
                 random_seed=self._random_seed
             )
 
@@ -346,7 +352,7 @@ class NodeEmbeddings:
             from pykeen.models import DistMult
             model=DistMult(
                 triples_factory=factory,
-                embedding_dim=int(48*k),
+                embedding_dim=self.embedding_dim,
                 random_seed=self._random_seed
             )
 
@@ -354,7 +360,7 @@ class NodeEmbeddings:
             from pykeen.models import RotatE
             model=RotatE(
                 triples_factory=factory,
-                embedding_dim=int(48*k),
+                embedding_dim=self.embedding_dim,
                 random_seed=self._random_seed
             )
 
@@ -362,7 +368,7 @@ class NodeEmbeddings:
             from pykeen.models import BoxE
             model = BoxE(
                 triples_factory=factory,
-                embedding_dim=int(48*k),
+                embedding_dim=self.embedding_dim,
                 random_seed=self._random_seed
             )
         
@@ -370,68 +376,15 @@ class NodeEmbeddings:
             from pykeen.models import DistMultLiteralGated
             model=DistMultLiteralGated(
                 triples_factory=factory,
-                embedding_dim=48,
+                embedding_dim=self.embedding_dim,
                 random_seed=self._random_seed
             )
         return model
 
-    def train_embeddings(self):
-        """
-        Train Node embeddings with the torchkge framework
-        :return:
-        """
-        # Define some hyper-parameters for training
-        if self._use_head:
-            emb_dim = 23
-        else:
-            emb_dim = 46
-        lr = 0.0004
-        n_epochs = 1000
-        b_size = 4
-        margin = 0.5
-
-        # Define the model and criterion
-        model = TransHModel(emb_dim, self._knowledge_graph.n_ent, self._knowledge_graph.n_rel)
-        criterion = MarginLoss(margin)
-
-        # Move everything to CUDA if available
-        #if cuda is not None:
-        #    if cuda.is_available():
-         #       cuda.empty_cache()
-          #      model.cuda()
-           #     criterion.cuda()
-
-        # Define the torch optimizer to be used
-        optimizer = Adam(model.parameters(), lr=lr, weight_decay=1e-5)
-
-        sampler = BernoulliNegativeSampler(self._knowledge_graph)
-        dataloader = DataLoader(self._knowledge_graph, batch_size=b_size)
-
-        iterator = tqdm(range(n_epochs), unit='epoch')
-        for epoch in iterator:
-            running_loss = 0.0
-            for i, batch in enumerate(dataloader):
-                h, t, r = batch[0], batch[1], batch[2]
-                n_h, n_t = sampler.corrupt_batch(h, t, r)
-
-                optimizer.zero_grad()
-
-                # forward + backward + optimize
-                pos, neg = model(h, t, n_h, n_t, r)
-                loss = criterion(pos, neg)
-                loss.backward()
-                optimizer.step()
-
-                running_loss += loss.item()
-            iterator.set_description(
-                'Epoch {} | mean loss: {:.5f}'.format(epoch + 1,
-                                                      running_loss / len(dataloader)))
-
-        model.normalize_parameters()
-        self._embeddings = model.get_embeddings()
-        self._save_embeddings_and_metadata()
-
     def train_embeddings_pykeen(self):
+        """
+        This methods trains the embeddings with the embedding method specified when creating the class
+        """
 
         if self._type == "rdf2vec":
             self.train_rdf2vec()
@@ -472,7 +425,7 @@ class NodeEmbeddings:
 
         _ = training_loop.train(
             triples_factory=factory,
-            num_epochs=750,
+            num_epochs=self._epochs[self._type],
         )
 
         # Get the embeddings
@@ -483,8 +436,15 @@ class NodeEmbeddings:
         from pyrdf2vec.graphs import KG, Vertex
         from pyrdf2vec import RDF2VecTransformer
         from pyrdf2vec.embedders import Word2Vec
-        from pyrdf2vec.walkers import RandomWalker
+        from pyrdf2vec.walkers import RandomWalker, SplitWalker
 
+        if self.rdf2vec_config == None:
+            number_of_walks = 10
+            walker = 'random'
+        else:
+            number_of_walks = self.rdf2vec_config['number_of_walks']
+            walker = self.rdf2vec_config['walker']
+        print(number_of_walks)
         os.environ['PYTHONHASHSEED'] = str(self._random_seed)
         print("env set")
         if self._use_head:
@@ -494,39 +454,40 @@ class NodeEmbeddings:
 
         # Prepare data for pyrdf2vec
         relations, literals = self.split_off_literals()
+        entities = []
         
         URL = "http://pyRDF2Vec"
         CUSTOM_KG = KG()
         for row in relations:
             subj = Vertex(f"{URL}#{row[0]}")
+            entities.append("http://pyRDF2Vec#" + row[0])
             obj = Vertex((f"{URL}#{row[2]}"))
+            entities.append("http://pyRDF2Vec#" + row[2])
             pred = Vertex((f"{URL}#{row[1]}"), predicate=True, vprev=subj, vnext=obj)
-            CUSTOM_KG.add_walk(subj, pred, obj)
 
-        if self._kgtype == 'quantified_parameters_with_literal':
-            for row in literals:
-                subj = Vertex(f"{URL}#{row[0]}")
-                obj = Vertex((f"{URL}#{row[2]}"))
-                pred = Vertex((f"{URL}#{row[1]}"), predicate=True, vprev=subj, vnext=obj)
-                CUSTOM_KG.add_walk(subj, pred, obj)
+            CUSTOM_KG.add_walk(subj, pred, obj)
 
         entities = []
         for index, row in self.metadata.iterrows():
-            entities.append("http://pyRDF2Vec#" + str(self.metadata.loc[index]['name']))
+            if self._kgtype != 'quantified_parameters_with_literal' or  self.metadata.loc[index]['type'] is not None:
+                entities.append("http://pyRDF2Vec#" + str(self.metadata.loc[index]['name']))
+
+        if walker == 'random':
+            walkers=[RandomWalker(max_depth=4, max_walks=100, with_reverse=False, n_jobs=2, random_state=self._random_seed)]
 
         transformer = RDF2VecTransformer(
-            Word2Vec(epochs=750,
-                    vector_size=int(48*k),
+            Word2Vec(epochs=self._epochs[self._type],
+                    vector_size=self.embedding_dim,
                     workers=1),
-            walkers=[RandomWalker(4, 10, with_reverse=False, n_jobs=2, random_state=self._random_seed)],
-            # verbose=1
+            walkers=walkers,
+            verbose=2
         )
         # Get our embeddings.
         q = mp.Queue()
         try:
             mp.set_start_method('spawn')
         except:
-            print("err")
+            pass
         # Do the embedding in another thread in order for change to PYTHONHASHSEED to work correctly
         p = mp.Process(target=fit_transform_wrapper, args=(transformer, CUSTOM_KG, entities, q,))
         p.start()
@@ -537,11 +498,8 @@ class NodeEmbeddings:
 
 
 def fit_transform_wrapper(transformer, kg, ents, q):
-    print("inside")
     embeddings, literals = transformer.fit_transform(kg, ents)
-    print("before put")
     q.put((embeddings, literals))
-    print("after put")
     return
 
 
