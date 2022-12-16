@@ -1,0 +1,10 @@
+Metadata-Version: 2.1
+Name: kbc-rdf2vec
+Version: 0.1
+Summary: Allows to use RDF2Vec for knowledge base completion (KBC) / link predictions.
+Home-page: www.jan-portisch.eu
+Author: Jan Portisch
+Author-email: jan@informatik.uni-mannheim.de
+License: MIT
+License-File: LICENSE
+

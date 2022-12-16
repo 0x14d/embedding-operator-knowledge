@@ -1,0 +1,9 @@
+Metadata-Version: 2.1
+Name: kbc-evaluation
+Version: 0.1
+Summary: Allows to evaluate link prediction text files.
+Home-page: www.jan-portisch.eu
+Author: Jan Portisch
+Author-email: jan@informatik.uni-mannheim.de
+License: MIT
+License-File: LICENSE

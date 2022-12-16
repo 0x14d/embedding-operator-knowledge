@@ -1,0 +1,9 @@
+A B C
+	Heads: B C D F G A W X Y Z
+	Tails: A B C D E F G H I J
+D E F
+	Heads: D E F G H I J K L M
+	Tails: F G H I J K L M N O
+G H I
+	Heads: J K L M N O P Q R S
+	Tails: J K L M N O P Q R S
