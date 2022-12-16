@@ -1,6 +1,17 @@
 # A Closer Look at Sum-based Embeddings for Knowledge Graphs Containing Procedural Knowledge
 
-**This repository will be refactored in the following days**
+## Setup
+
+1. Clone the repository with `git clone https://github.com/0x14d/embedding-operator-knowledge`
+1. Open repository with `cd embedding-operator-knowledge`
+1. <b>Python 3.9</b> is required (2 options)
+   - Use the included dev container (requires <b>Docker</b>)
+   - Install python manually
+1. Create virtual environment (optional)
+   1. `python -m venv ./venv`
+   1. `source ./venv/bin/activate`
+1. Install python3.9-dev with `sudo apt install python3.9-dev`
+1. Install requirements with `pip install -r requirements.txt`
 
 This Repository contains the code necessary to reproduce the results shown in the paper, which was submitted to DL4KG.
 

@@ -113,8 +113,7 @@ class AmriConfig(CompareMethodsConfig):
             EmbeddingType.RotatE,
             EmbeddingType.DistMult,
             EmbeddingType.DistMultLiteralGated,
-            EmbeddingType.BoxE,
-            EmbeddingType.Rdf2Vec
+            EmbeddingType.BoxE
         ],
         head_vals = [True],
         distance_metrics = ["euclidean", "jaccard"],
@@ -141,8 +140,7 @@ class MatchesAtKConfig(CompareMethodsConfig):
                 EmbeddingType.RotatE,
                 EmbeddingType.DistMult,
                 EmbeddingType.DistMultLiteralGated,
-                EmbeddingType.BoxE,
-                EmbeddingType.Rdf2Vec
+                EmbeddingType.BoxE
             ],
             head_vals=[True, False],
             distance_metrics=["euclidean", "jaccard"],
