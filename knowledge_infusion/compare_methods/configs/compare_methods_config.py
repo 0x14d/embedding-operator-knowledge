@@ -68,8 +68,8 @@ class CompareMethodsConfig(ABC):
         self.embedding_config = embedding_config
         self.data_provider = data_provider
 
-        self.sdg_config = 'knowledge_infusion/eval_with_synth_data/configs/sdg/default_config_sdg.json'
-        self.train_config = 'knowledge_infusion/eval_with_synth_data/configs/training/default_config_ckl.json'
+        self.sdg_config = 'configs/default_config_sdg.json'
+        self.train_config = 'configs/default_train_config.json'
         self.results_folder = "knowledge_infusion/compare_methods/results/"
 
     def save_configuration(self, file_location: str) -> None:

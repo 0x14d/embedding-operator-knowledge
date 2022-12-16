@@ -55,7 +55,7 @@ def get_graph_from_data_provider(
 
     if sdg_config is None:
         sdg_config = SdgConfig.create_config(
-            'knowledge_infusion/eval_with_synth_data/configs/sdg/default_config_sdg.json'
+            'configs/default_config_sdg.json'
         )
     if kg_config is not None:
         sdg_config.knowledge_graph_generator = kg_config

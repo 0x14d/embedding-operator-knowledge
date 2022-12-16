@@ -86,3 +86,7 @@ obj/
 rules/
 kcap/
 *.pyc
+
+# Results
+knowledge_infusion/compare_methods/results
+*.log
