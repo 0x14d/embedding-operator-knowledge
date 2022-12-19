@@ -15,7 +15,6 @@ from data_provider.synthetic_data_generation.config.sdg_config import SdgConfig
 from data_provider.knowledge_graphs.config.knowledge_graph_generator_config import KnowledgeGraphGeneratorType
 from knowledge_infusion.utils.schemas import TrainConfig
 from knowledge_infusion.embedding_evaluation import EmbeddingEvaluation
-from knowledge_infusion.rdf2vec.rdf2vec_link_prediction import calculate_amri_hits_at_k_for_rdf2vec
 from data_provider.synthetic_data_provider import SyntheticDataProvider
 from data_provider import data_provider_singleton
 from knowledge_infusion.graph_evaluation.graph_information import generate_graph_information
@@ -315,32 +314,29 @@ def evaluate_amri_hitsatk(node_embeddings: NodeEmbeddings):
     with open(node_embeddings._base_folder + "model.pickle", 'rb') as fi:
         data = pickle.load(fi)
     
-    if node_embeddings._embedding_type == 'rdf2vec':
-        metric_results = calculate_amri_hits_at_k_for_rdf2vec(node_embeddings._base_folder)
-    else:
-        node_embeddings.pykeen_model = data['model']
-        node_embeddings.train_data = data['train']
-        node_embeddings.test_data = data['test']
+    node_embeddings.pykeen_model = data['model']
+    node_embeddings.train_data = data['train']
+    node_embeddings.test_data = data['test']
 
-        from pykeen.evaluation import RankBasedEvaluator
-        from pykeen.evaluation.ranking_metric_lookup import MetricKey
-        evaluator = RankBasedEvaluator()
+    from pykeen.evaluation import RankBasedEvaluator
+    from pykeen.evaluation.ranking_metric_lookup import MetricKey
+    evaluator = RankBasedEvaluator()
 
-        mapped_triples = node_embeddings.test_data.mapped_triples
-        results = evaluator.evaluate(
-            model= node_embeddings.pykeen_model,
-            mapped_triples=mapped_triples,
-            additional_filter_triples=[node_embeddings.train_data.mapped_triples]
-        )
-        
-        #hits at k for 1,5,10 & arithmeticmeanrank
-        metrics = ['adjustedarithmeticmeanrankindex', 'hits_at_1', 'hits_at_5', 'hits_at_10']
-        sides = ['head', 'tail']
-        metric_results = {}
-        for side in sides:
-            for metric in metrics:
-                key = MetricKey(metric, side, 'realistic')
-                metric_results[(metric, side)] = results.get_metric(key)
+    mapped_triples = node_embeddings.test_data.mapped_triples
+    results = evaluator.evaluate(
+        model= node_embeddings.pykeen_model,
+        mapped_triples=mapped_triples,
+        additional_filter_triples=[node_embeddings.train_data.mapped_triples]
+    )
+    
+    #hits at k for 1,5,10 & arithmeticmeanrank
+    metrics = ['adjustedarithmeticmeanrankindex', 'hits_at_1', 'hits_at_5', 'hits_at_10']
+    sides = ['head', 'tail']
+    metric_results = {}
+    for side in sides:
+        for metric in metrics:
+            key = MetricKey(metric, side, 'realistic')
+            metric_results[(metric, side)] = results.get_metric(key)
     res = {
         'kg_type' : node_embeddings._kgtype,
         'method' : node_embeddings._embedding_type,
@@ -387,33 +383,7 @@ def arg_checker(args) -> CompareMethodsConfig:
         arg_error()
     
     return config
-
-def no_kbc_error(config: CompareMethodsConfig):
-    """Explicit check for the kbc libraries and proper warning if not installed
-
-    Args:
-        config (CompareMethodsConfig): configuration class
-    """
-    # The check for the kbc libraries is done explicitly because they are not
-    # installable over pip and therefore require manual installation
-    if config.evaluation_method == EvaluationMethod.MatchesAtK:
-        return True
-    if config.evaluation_method == EvaluationMethod.AmriAndHitsAtK and \
-        EmbeddingType.Rdf2Vec in config.embedding_types:
-        FAIL = '\033[91m' #console code is displayed red
-        ENDC = '\033[0m' # End red console print
-        try:
-            import kbc_evaluation, kbc_rdf2vec
-        except ModuleNotFoundError:
-            print(FAIL + "WARNING:")
-            print("Your configuration wants to evaluate RDF2Vec-Embeddings with AMRI and Hits@K metrics")
-            print("")
-            print("In order to do this special libraries not available over pip are required")
-            print("Please refer to the get_kbc.md from the documentation.")
-            print(ENDC)
-            return False
-        return True
-
+    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -429,6 +399,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config = arg_checker(args)
     
-    if no_kbc_error(config):
-        this = CompareMethods(config)
-        this.execute_all_methods()
+    this = CompareMethods(config)
+    this.execute_all_methods()

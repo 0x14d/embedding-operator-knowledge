@@ -24,7 +24,6 @@ from knowledge_infusion.graph_embeddings.embedding_types import EmbeddingType
 from knowledge_infusion.graph_embeddings.embedding_config import EmbeddingConfig, NormalizationMethods, StandardConfig
 from knowledge_extraction.rule_to_representation import *
 from knowledge_infusion.graph_embeddings.utils.train_test_split import kg_train_test_split
-from knowledge_infusion.rdf2vec.EvalDataset import EvalDataset
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
@@ -411,11 +410,6 @@ class NodeEmbeddings:
             self.train_random_embeddings()
             return
 
-        # Train Rdf2Vec
-        if self._embedding_type == EmbeddingType.Rdf2Vec:
-            self.train_rdf2vec()
-            return
-
         # Choose the correct embedding method from pykeen
         model = self.model_chooser(factory)
         self.pykeen_model = model
@@ -454,14 +448,6 @@ class NodeEmbeddings:
 
             with open(model_save_data, 'wb') as out_f:
                 pickle.dump(to_save, out_f)
-
-    def prepare_rdf2vec_evaluation(self, data):
-        """this method should evaluate the results from pyRDF2Vec embeddings
-        with the following metrics. hits@, AMRI
-        ! currently not implemented
-
-        """
-        pass
 
     def generate_graph_information(self, datatype="train"):
         """Generate informations about the graph to be able to describe it better
@@ -514,85 +500,6 @@ class NodeEmbeddings:
         }
         with open(self._base_folder + self._kgtype + "_graphdata_" + datatype + ".pkl", 'wb') as out_f:
             pickle.dump(graph_data, out_f)
-
-    def train_rdf2vec(self):
-        """Train the embeddings using RDF2Vec
-        """
-        from pyrdf2vec.graphs import KG, Vertex
-        from pyrdf2vec import RDF2VecTransformer
-        from pyrdf2vec.embedders import Word2Vec
-        from pyrdf2vec.walkers import RandomWalker
-
-        os.environ['PYTHONHASHSEED'] = str(self._random_seed)
-
-        # Preprocess data for pyrdf2vec
-        URL = "http://pyRDF2Vec"
-        
-        preprocessed_train_data = []
-        for relation in self.train_data.triples:
-            preprocessed_train_data.append([
-                f"{URL}#{relation[0]}".replace(" ", '_'),
-                f"{URL}#{relation[1]}".replace(" ", "_"),
-                f"{URL}#{relation[2]}".replace(" ", "_"),
-            ])
-            
-        preprocessed_test_data = []
-        for relation in self.test_data.triples:
-            preprocessed_test_data.append([
-                f"{URL}#{relation[0]}".replace(" ", '_'),
-                f"{URL}#{relation[1]}".replace(" ", "_"),
-                f"{URL}#{relation[2]}".replace(" ", "_"),
-            ])
-        
-        # create an RDF2Vec specific grpah object 
-        CUSTOM_KG = KG()
-        for row in preprocessed_train_data:
-            subj = Vertex(row[0])
-            obj = Vertex(row[2])
-            pred = Vertex(row[1], predicate=True, vprev=subj, vnext=obj)
-            CUSTOM_KG.add_walk(subj, pred, obj)
-
-        # Create entity list of all entities (from train and test set)
-        entities = []
-        for index, row in self.metadata.iterrows():
-            vert_str = "http://pyRDF2Vec#" + str(self.metadata.loc[index]['name']).replace(" ", "_")
-            entities.append(vert_str)
-            CUSTOM_KG.add_vertex(Vertex(vert_str))
-            
-        transformer = RDF2VecTransformer(
-            Word2Vec(epochs=self._epochs[self._embedding_type],
-                    vector_size=int(self._embedding_dim),
-                    workers=1),
-            walkers=[RandomWalker(self.embedding_config.rdf2vec_walker_max_depth, self.embedding_config.rdf2vec_walker_max_walks, with_reverse=False, n_jobs=2, random_state=self._random_seed)],
-            )
-        
-        # Do the embedding in another thread in order for change to PYTHONHASHSEED to work correctly
-        q = mp.Queue()
-        p = mp.Process(target=fit_transform_wrapper, args=(transformer, CUSTOM_KG, entities, q,))
-        p.start()
-        embeddings, literals, model = q.get()
-        p.join()
-        
-        
-        # Save the gensim model for the kbc_evaluation
-        model.save(self._base_folder + "model.model")
-        # Save the train data as an nt file for the kbc_evaluation
-        self.save_dataset_as_nt_file(preprocessed_train_data)
-        # Save the whole dataset as a
-        eval_data = EvalDataset(preprocessed_train_data, preprocessed_test_data)
-        
-        with open(self._base_folder + "eval_dataset_object.pickle", "wb") as out_f:
-            pickle.dump(eval_data, out_f)
-        
-        # Save the emebeddings in the usual f
-        self.embeddings = [tensor(embeddings)]
-
-        to_save = {'embeddings': self.embeddings, 'test' : preprocessed_test_data, 'train' : preprocessed_train_data}
-        model_save_data = self._base_folder + 'model.pickle'
-
-        with open(model_save_data, 'wb') as out_f:
-            pickle.dump(to_save, out_f)
-        self._save_embeddings_and_metadata()
 
     def train_random_embeddings(self):
         rng = np.random.default_rng(seed=self._random_seed)

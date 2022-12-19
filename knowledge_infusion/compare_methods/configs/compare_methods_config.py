@@ -104,7 +104,7 @@ class AmriConfig(CompareMethodsConfig):
 
     def __init__(self) -> None:
         super().__init__(
-        name="default",
+        name="amri",
         evaluation_method=EvaluationMethod.AmriAndHitsAtK,
         embedding_types = [
             EmbeddingType.TransE,

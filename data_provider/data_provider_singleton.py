@@ -8,6 +8,8 @@ from typing import Optional, Tuple
 from data_provider.abstract_data_provider import AbstractDataProvider
 from data_provider.synthetic_data_provider import SyntheticDataProvider
 
+_synthetic_db = None
+
 def _get_synthetic_aipe_dp(ignore_singleton: bool, **kwargs):
     """
     Returns the unique synthetic dataprovider.

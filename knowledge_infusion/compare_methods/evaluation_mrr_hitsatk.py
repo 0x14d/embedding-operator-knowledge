@@ -57,7 +57,7 @@ def combine_multiple_iterations(iteration_results, with_std = False):
     for result in og:
         # Find matching results from different metrics
         matches = []
-        for i in range(1, len(iteration_results)):
+        for i in range(0, len(iteration_results)):
             current = iteration_results[i]
             for element in current:
                 if result['kg_type'] == element['kg_type'] and result['method'] == element['method']:
