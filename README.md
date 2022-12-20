@@ -1,4 +1,4 @@
-# A Closer Look at Sum-based Embeddings for Knowledge Graphs Containing Procedural Knowledge
+# Embeddings of Knowledge Graphs Containing Procedural Knowledge
 
 ## Setup
 
