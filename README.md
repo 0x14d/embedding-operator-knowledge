@@ -15,21 +15,21 @@
 
 This Repository contains the code necessary to reproduce the results shown in the paper, which was submitted to DL4KG.
 
-## How to execute the results
-
+## How to:
 ### Generating the embeddings:
 
-In order to generate the embeddings execute:
+In order to train the embeddings & prepare the evaluation either for LinkPrediction (hits@k & AMRI) or Matches (matches@k) and the amount of iterations required execute:
 
-`python -m knowledge_infusion.compare_methods.compare_methods`
+`python -m knowledge_infusion.compare_methods.compare_methods --config LinkPrediction --iterations 30`
 
-Be cautious, this will take some time.
-
-### Generating the tables from the results 
+### Generating the evaluations
 
 After generating the embeddings execute:
 
 `python -m knowledge_infusion.compare_methods.generate_output_files`
+for hits@k and AMRI or
+`python -m knowledge_infusion.compare_methods.generate_output_files`
+for matches@k
 
 This will generate the resulting tables for:
 - Each iteration in [knowledge_infusion/compare_methods/results/iteration*/_table_format/]()
