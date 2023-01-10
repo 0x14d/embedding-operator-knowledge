@@ -13,7 +13,6 @@
 1. Install python3.9-dev with `sudo apt install python3.9-dev`
 1. Install requirements with `pip install -r requirements.txt`
 
-This Repository contains the code necessary to reproduce the results shown in the paper, which was submitted to DL4KG.
 
 ## How to:
 ### Generating the embeddings:
