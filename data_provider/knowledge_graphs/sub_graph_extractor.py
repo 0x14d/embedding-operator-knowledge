@@ -1,6 +1,10 @@
 """This module provides a methology to extract a subgraph from a graph
 """
 
+import glob
+import os
+from pathlib import Path
+import sys
 import igraph as iG
 from typing import List
 import copy
@@ -8,6 +12,7 @@ import copy
 from data_provider.knowledge_graphs.config.knowledge_graph_generator_config import (
     KnowledgeGraphGeneratorType,
 )
+from knowledge_infusion.graph_embeddings.embedding_types import EmbeddingType
 
 
 class SubGraphExtractor:
@@ -24,12 +29,20 @@ class SubGraphExtractor:
             KnowledgeGraphGeneratorType.UNQUANTIFIED: 1,
             KnowledgeGraphGeneratorType.BASIC: 1,
             KnowledgeGraphGeneratorType.QUANTIFIED_PARAMETERS_WITHOUT_SHORTCUT: 2,
+            KnowledgeGraphGeneratorType.QUANTIFIED_PARAMETERS_WITHOUT_SHORTCUT2: 2,
+            KnowledgeGraphGeneratorType.QUANTIFIED_PARAMETERS_WITHOUT_SHORTCUT3: 2,
             KnowledgeGraphGeneratorType.QUANTIFIED_PARAMETERS_WITH_SHORTCUT: 2,
+            KnowledgeGraphGeneratorType.QUANTIFIED_PARAMETERS_WITH_SHORTCUT2: 2,
+            KnowledgeGraphGeneratorType.QUANTIFIED_PARAMETERS_WITH_SHORTCUT3: 2,
             KnowledgeGraphGeneratorType.QUANTIFIED_PARAMETERS_WITH_LITERAL: 1,
             KnowledgeGraphGeneratorType.QUANTIFIED_PARAMETERS_W3: 2,
             KnowledgeGraphGeneratorType.QUANTIFIED_PARAMETERS_W3_WITH_LITERAL: 2,
             KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITHOUT_SHORTCUT: 3,
+            KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITHOUT_SHORTCUT2: 3,
+            KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITHOUT_SHORTCUT3: 3,
             KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITH_SHORTCUT: 3,
+            KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITH_SHORTCUT2: 3,
+            KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITH_SHORTCUT3: 3,
             KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITH_LITERAL: 1,
             KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_W3: 2,
             KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_W3_WITH_LITERAL: 2,
@@ -66,12 +79,15 @@ class SubGraphExtractor:
         else:
 
             if (
-                self._kgtype
-                == KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITH_LITERAL
-                or self._kgtype
-                == KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITH_SHORTCUT
-                or self._kgtype
-                == KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITHOUT_SHORTCUT
+                self._kgtype in [
+                    KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITH_LITERAL,
+                    KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITH_SHORTCUT,
+                    KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITH_SHORTCUT2,
+                    KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITH_SHORTCUT3,
+                    KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITHOUT_SHORTCUT,
+                    KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITHOUT_SHORTCUT2,
+                    KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITHOUT_SHORTCUT3
+                ]
             ):
                 edge_list = self._get_subgraph_for_quantified_condition(
                     start_node_id, quality_quantification
@@ -163,28 +179,39 @@ class SubGraphExtractor:
                 if edge["weight"] == "quantified by":
                     mu_nus.append(self._graph.vs.find(edge.target))  # mu-nu
 
+        # Find highest condition boundary
+        all_boundaries = []
+        for mu_nu in mu_nus:
+            for edge in mu_nu.out_edges():
+                if edge["weight"] in ["starts at", "ends at"]:
+                    all_boundaries.append(
+                        float(self._graph.vs.find(
+                            edge.target)["literal_value"])
+                    )
+        max_end = max(all_boundaries)
+
         for mu_nu in mu_nus:
             for edge in mu_nu.out_edges():
                 # Find out the range in which this mu-nu-relations is valid
                 if edge["weight"] == "starts at":
-                    start = float(self._graph.vs.find(edge.target)["literal_value"])
+                    _start = float(self._graph.vs.find(
+                        edge.target)["literal_value"])
                 elif edge["weight"] == "ends at":
-                    end = float(self._graph.vs.find(edge.target)["literal_value"])
+                    _end = float(self._graph.vs.find(
+                        edge.target)["literal_value"])
 
+            start = min(_start, _end)
+            end = max(_start, _end)
             # If mu-nu relation is valid add it to the sub graph
-            if (
-                quality_quantification > start
-                and quality_quantification < end
-                or quality_quantification < start
-                and quality_quantification > end
-            ):
-                if self._avoid_literals:
-                    for edge in mu_nu.all_edges():
-                        if edge["literal_included"] == "None":
-                            relevant_edges.append(edge)
+            if not start <= quality_quantification < end:
+                if end == max_end == quality_quantification:
+                    pass
                 else:
-                    for edge in mu_nu.all_edges():
-                        relevant_edges.append(edge)
+                    continue
+            for edge in mu_nu.all_edges():
+                if self._avoid_literals and edge["literal_included"] != "None":
+                    continue
+                relevant_edges.append(edge)
 
         return relevant_edges
 
@@ -217,8 +244,21 @@ class SubGraphExtractor:
                 # Save mus for further evaluation
                 quantified_conclusions.append(edge)
 
-        quantified_conclusions_in_correct_range = []
+        # Find highest condition boundary
+        all_boundaries = []
+        for edge in quantified_conclusions:
+            target = edge.target
+            target_vertex = self._graph.vs.find(target)
+            target_edges = target_vertex.all_edges()
+            for qc_edge in target_edges:
+                if qc_edge["weight"] in ["starts at", "ends at"]:
+                    all_boundaries.append(
+                        float(self._graph.vs.find(
+                            qc_edge.target)["literal_value"])
+                    )
+        max_end = max(all_boundaries)
 
+        quantified_conclusions_in_correct_range = []
         for edge in quantified_conclusions:
             target = edge.target
             target_vertex = self._graph.vs.find(target)
@@ -227,15 +267,15 @@ class SubGraphExtractor:
             for qc_edge in target_edges:
                 # Check if this is the right conclusion for the quality quantification
                 if qc_edge["weight"] == "starts at":
-                    start = self._graph.vs.find(qc_edge.target)
+                    _start = float(self._graph.vs.find(
+                        qc_edge.target)["literal_value"])
                 if qc_edge["weight"] == "ends at":
-                    end = self._graph.vs.find(qc_edge.target)
-            if (
-                quality_quantification > float(start["literal_value"])
-                and quality_quantification < float(end["literal_value"])
-                or quality_quantification < float(start["literal_value"])
-                and quality_quantification > float(end["literal_value"])
-            ):
+                    _end = float(self._graph.vs.find(
+                        qc_edge.target)["literal_value"])
+            start = min(_start, _end)
+            end = max(_start, _end)
+            if start <= quality_quantification < end or \
+               end == max_end == quality_quantification:
                 quantified_conclusions_in_correct_range.append(edge)
 
         # Add the conclusions, who are in the right range to the subgraph
@@ -254,9 +294,8 @@ class SubGraphExtractor:
 
                         ins = nu.all_edges()
                         for in_edge in ins:
-                            if in_edge["weight"] == "quantified by":
+                            if any(rel in in_edge["weight"] for rel in ["quantified by", "quantifies"]):
                                 relevant_edges.append(in_edge)
-
         return relevant_edges
 
     def get_sub_graph_for_quality(self, start_node_id: int) -> (List[iG.Edge], List[iG.Vertex]):
@@ -270,7 +309,7 @@ class SubGraphExtractor:
             List[iGraph.Edge]: List of edges in the subgraph
             List[iGraph.Vertex]: List of vertecies in the subgraph
         """
-        
+
         # First Step:
         #     This step does the propagation.
         #     This uses the hop-array as a state variable and the relevant_vertices-array as the output
@@ -279,7 +318,7 @@ class SubGraphExtractor:
         #         2. Add neighbors to next hop
         #         3. Add newly found vertices in the current hop to the relevant_vertices
         #         4. current_hop = next hop
-        
+
         relevant_vertices = set()  # Set for all vertices in the subgraph
         hop = [[start_node_id]]  # Nodes explored in each
         relevant_vertices.add(start_node_id)
@@ -337,45 +376,100 @@ if __name__ == "__main__":
     """
     import warnings
     warnings.warn("This main method is for debug purposes only")
-    
+
     # Which representation to display
-    repr = "unquantified"
-    
+    repr = "quantified_parameters_without_shortcut"
+    aggregation_method = "groundtruth"
     import pickle
-    
-    try:
-        with open("knowledge_infusion/compare_methods/results/debug/iteration0/"+ repr +"_using_ComplExLiteral/embedding/graph_embeddings/edges.pkl", "rb") as in_f:
-            edges = pickle.load(in_f)
-        with open("knowledge_infusion/compare_methods/results/debug/iteration0/"+ repr +"_using_ComplExLiteral/embedding/graph_embeddings/verts.pkl", "rb") as in_f:
-            verts = pickle.load(in_f)
-    except FileNotFoundError:
-        print("Please execute compare methods with the debug config atleast once" +
-              " before starting this module. As the generated graphs there" + 
-              " are the expected input for this modules main.")
-        import sys 
-        sys.exit(0)
 
-    g = iG.Graph.DataFrame(edges, directed=True, vertices=verts)
+    base_path = f"knowledge_infusion/compare_methods/results/*/*/*/*/iteration0/"
+    exps = glob.glob(base_path)
+    for data_ext_path in exps:
+        for repr in KnowledgeGraphGeneratorType:
+            for emb in EmbeddingType:
+                try:
+                    edges_str = glob.glob(
+                        f"{data_ext_path}{repr}_using_{emb}/embedding/graph_embeddings/edges_*.pkl")
+                    verts_str = glob.glob(
+                        f"{data_ext_path}{repr}_using_{emb}/embedding/graph_embeddings/verts*.pkl")
+                    if len(edges_str) > 1 or len(verts_str) > 1:
+                        raise ValueError("too many edges/vert files")
+                    if len(edges_str) == 0 or len(verts_str) == 0:
+                        continue
+                    with open(edges_str[0], "rb") as in_f:
+                        edges = pickle.load(in_f)
+                    with open(verts_str[0], "rb") as in_f:
+                        verts = pickle.load(in_f)
+                except FileNotFoundError as e:
+                    print(f"{e} not found - was {emb} run?")
 
-    sge = SubGraphExtractor(
-        g, KnowledgeGraphGeneratorType(repr)
-    )
+                try:
+                    if edges.empty:
+                        raise ValueError(f"edges {edges} is empty")
+                    if verts.empty:
+                        raise ValueError(f"vertices {edges} is empty")
+                    g = iG.Graph.DataFrame(
+                        edges, directed=True, vertices=verts)
+                    sge = SubGraphExtractor(
+                        g, KnowledgeGraphGeneratorType(repr)
+                    )
 
-    graph = sge.extract_subgraph_as_iGraph("overall_ok",2)
+                    subgraph = sge.extract_subgraph_as_iGraph("overall_ok")
+                except TypeError as e:
+                    print(f"{e} at {data_ext_path}/{repr}/{emb}",
+                          file=sys.stderr)
+                except Exception as e:
+                    print(f"{e} at {data_ext_path}/{repr}/{emb}",
+                          file=sys.stderr)
+                    continue
+                if not os.path.exists(f"{str(Path(data_ext_path).parents[0])}/graphs"):
+                    os.makedirs(
+                        f"{str(Path(data_ext_path).parents[0])}/graphs")
+                subgraph.vs["label"] = subgraph.vs["name"]
+                import matplotlib.pyplot as plt
 
-    graph.vs["label"] = graph.vs["name"]
-    import matplotlib.pyplot as plt
+                layout = subgraph.layout("kk")
+                fig, ax = plt.subplots()
 
-    layout = graph.layout("kk")
-    fig, ax = plt.subplots()
+ # None equals pq-rel bc setting the type was forgotten in qp_w3, otherwise it's always set
+                color_dict = {"qual_influence": "blue",
+                              "env_influence": "brown", "parameter": "yellow",
+                              "value": "cyan", "pq-relation": "magenta", "quantified_conclusion": "teal", "my-ny-relation": "forestgreen", None: "magenta"}
 
-    visual_style = {}
-    visual_style["edge_label_size"] = 10 # [2,2,2]
-    visual_style["margin"] = 80
-    visual_style["vertex_size"] = 0.1
-    visual_style['edge_label'] = graph.es['weight']
+                visual_style = {}
+                try:
+                    visual_style["vertex_color"] = [color_dict[type]
+                                                    for type in subgraph.vs["type"]]
+                except KeyError as e:
+                    print("color_dict doesn't include " + str(e))
+                visual_style["edge_label_size"] = 10  # [2,2,2]
+                visual_style["margin"] = 80
+                visual_style["vertex_size"] = 0.1
+                visual_style['edge_label'] = subgraph.es['weight']
 
-    iG.plot(graph,layout=layout, target=ax, **visual_style)
-    
-    
-    plt.show()
+                iG.plot(subgraph, layout=layout, target=ax, **visual_style)
+
+                plt.savefig(
+                    f"{str(Path(data_ext_path).parents[0])}/graphs/{repr}_{emb}_rel.pdf")
+                plt.clf()
+                plt.cla()
+
+                visual_style = {}
+                try:
+                    visual_style["vertex_color"] = [color_dict[type]
+                                                    for type in g.vs["type"]]
+                except KeyError as e:
+                    print("color_dict doesn't include " + str(e))
+                visual_style["edge_width"] = 0.1
+                visual_style["vertex_size"] = 0.5
+                #visual_style["layout"] = graph.layout_kamada_kawai()
+
+                #    visual_style["bbox"] = (1500, 1500)
+                #   visual_style["margin"] = 100
+
+                fig, ax = plt.subplots()
+                iG.plot(g, target=ax, **visual_style)
+                plt.savefig(
+                    f"{str(Path(data_ext_path).parents[0])}/graphs/{repr}_{emb}.pdf")
+                plt.clf()
+                plt.cla()

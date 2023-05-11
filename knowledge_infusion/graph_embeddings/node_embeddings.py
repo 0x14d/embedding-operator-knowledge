@@ -24,6 +24,7 @@ from knowledge_infusion.graph_embeddings.embedding_types import EmbeddingType
 from knowledge_infusion.graph_embeddings.embedding_config import EmbeddingConfig, NormalizationMethods, StandardConfig
 from knowledge_extraction.rule_to_representation import *
 from knowledge_infusion.graph_embeddings.utils.train_test_split import kg_train_test_split
+from knowledge_infusion.rdf2vec.EvalDataset import EvalDataset
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
@@ -38,7 +39,7 @@ class NodeEmbeddings:
     _edges: DataFrame
     _changed_parameters: DataFrame
     _use_head: bool
-    _base_folder: str
+    _base_folder: Optional[str]
     _embedding_type = EmbeddingType
 
     def __init__(
@@ -51,7 +52,7 @@ class NodeEmbeddings:
         kg_type='basic',
         random_seed='1111',
         with_test_data=False,
-        embedding_config: EmbeddingConfig = None,
+        embedding_config: Optional[EmbeddingConfig] = None,
         changed_parameters: Optional[DataFrame] = None
     ):
         # If no config is provided default to the standard config defined above
@@ -76,8 +77,8 @@ class NodeEmbeddings:
         # Specify the number of epochs used for the different embedding types
         self._epochs = self.embedding_config.epochs
 
-        if os.path.isfile(base_folder + 'graph_embeddings/node_embeddings.tsv'):
-            self.import_tsv(base_folder + 'graph_embeddings/')
+        if self._base_folder is not None and os.path.isfile(self._base_folder+'graph_embeddings/node_embeddings.tsv'):
+            self.import_tsv(self._base_folder+'graph_embeddings/')
         else:
             self.train_embeddings_pykeen()
 
@@ -398,16 +399,20 @@ class NodeEmbeddings:
             metadata=self.metadata,
             seed=self._random_seed,
             test_split=self.embedding_config.train_test_split if self._with_test_data else 0.0,
-            use_literals=self._embedding_type in [EmbeddingType.ComplExLiteral, EmbeddingType.DistMultLiteralGated]
+            use_literals=self._embedding_type in [
+                EmbeddingType.ComplExLiteral, EmbeddingType.DistMultLiteralGated]
         )
         if self._with_test_data:
             self.train_data, self.test_data = factory, test_data
-            self.generate_graph_information()
-
 
         # Train random embeddings
         if self._embedding_type == EmbeddingType.Random:
             self.train_random_embeddings()
+            return
+
+        # Train Rdf2Vec
+        if self._embedding_type == EmbeddingType.Rdf2Vec:
+            self.train_rdf2vec()
             return
 
         # Choose the correct embedding method from pykeen
@@ -423,14 +428,14 @@ class NodeEmbeddings:
             model=model,
             triples_factory=factory,
             optimizer=optimizer,
-            negative_sampler='bernoulli',
-
+            negative_sampler='bernoulli'
         )
 
         _ = training_loop.train(
             triples_factory=factory,
             num_epochs=self._epochs[self._embedding_type],
             drop_last=False,
+            use_tqdm=False
         )
 
         from matplotlib import pyplot as plt
@@ -449,57 +454,88 @@ class NodeEmbeddings:
             with open(model_save_data, 'wb') as out_f:
                 pickle.dump(to_save, out_f)
 
-    def generate_graph_information(self, datatype="train"):
-        """Generate informations about the graph to be able to describe it better
-
-        Args:
-            datatype (str, optional): _description_. Defaults to "train".
+    def train_rdf2vec(self):
+        """Train the embeddings using RDF2Vec
         """
-        import networkx as nx
-        import matplotlib.pyplot as plt
-        from statistics import mean, stdev
+        from pyrdf2vec.graphs import KG, Vertex
+        from pyrdf2vec import RDF2VecTransformer
+        from pyrdf2vec.embedders import Word2Vec
+        from pyrdf2vec.walkers import RandomWalker
 
-        el = []
-        for _, edge in self.edges.iterrows():
-            if self._kgtype == "quantified_conditions_with_literal" and edge.loc['literal_included'] != 'None':
-                continue
-            elif self._kgtype == 'basic':
-                el.append(str(edge.loc['from']) + "||" + str(edge.loc['to']))
-            else:
-                el.append(str(edge.loc['from']) + "||" + str(edge.loc['to']))
+        os.environ['PYTHONHASHSEED'] = str(self._random_seed)
 
-        G = nx.parse_edgelist(el, delimiter="||",
-                              create_using=nx.DiGraph).to_directed()
+        # Preprocess data for pyrdf2vec
+        URL = "http://pyRDF2Vec"
 
-        closness_centrality = nx.closeness_centrality(G).values()
-        degree_centrality = nx.degree_centrality(G).values()
-        avgnbdeg = nx.average_neighbor_degree(G, source="in+out").values()
+        preprocessed_train_data = []
+        for relation in self.train_data.triples:
+            preprocessed_train_data.append([
+                f"{URL}#{relation[0]}".replace(" ", '_'),
+                f"{URL}#{relation[1]}".replace(" ", "_"),
+                f"{URL}#{relation[2]}".replace(" ", "_"),
+            ])
 
-        if "_with_literal" in self._kgtype:
-            nolit = self.metadata.loc[self.metadata['type']
-                                      == 'value'].shape[0]
+        preprocessed_test_data = []
+        for relation in self.test_data.triples:
+            preprocessed_test_data.append([
+                f"{URL}#{relation[0]}".replace(" ", '_'),
+                f"{URL}#{relation[1]}".replace(" ", "_"),
+                f"{URL}#{relation[2]}".replace(" ", "_"),
+            ])
 
-        else:
-            nolit = 0
+        # create an RDF2Vec specific grpah object
+        CUSTOM_KG = KG()
+        for row in preprocessed_train_data:
+            subj = Vertex(row[0])
+            obj = Vertex(row[2])
+            pred = Vertex(row[1], predicate=True, vprev=subj, vnext=obj)
+            CUSTOM_KG.add_walk(subj, pred, obj)
 
-        degrees = G.degree()
+        # Create entity list of all entities (from train and test set)
+        entities = []
+        for index, row in self.metadata.iterrows():
+            vert_str = "http://pyRDF2Vec#" + \
+                str(self.metadata.loc[index]['name']).replace(" ", "_")
+            entities.append(vert_str)
+            CUSTOM_KG.add_vertex(Vertex(vert_str))
 
-        sum_of_edges = sum(dict(degrees).values())
-        avg_degree = sum_of_edges / G.number_of_nodes()
+        transformer = RDF2VecTransformer(
+            Word2Vec(epochs=self._epochs[self._embedding_type],
+                     vector_size=int(self._embedding_dim),
+                     workers=1),
+            walkers=[RandomWalker(self.embedding_config.rdf2vec_walker_max_depth, self.embedding_config.rdf2vec_walker_max_walks,
+                                  with_reverse=False, n_jobs=2, random_state=self._random_seed)],
+        )
 
-        graph_data = {
-            'representation': self._kgtype,
-            'No. of edges': len(el),
-            'No. of nodes': len(self.metadata) - nolit,
-            'No. of literals': nolit,
-            'No. of relations': self.train_data.num_relations,
-            'closeness centrality': str(round(mean(closness_centrality), 2)) + "±" + str(round(stdev(closness_centrality), 2)),
-            'degree centrality': str(round(mean(degree_centrality), 2)) + "±" + str(round(stdev(degree_centrality), 2)),
-            'avg. nb. degree': str(round(mean(avgnbdeg), 2)) + "±" + str(round(stdev(avgnbdeg), 2)),
-            'avg. degree': avg_degree
-        }
-        with open(self._base_folder + self._kgtype + "_graphdata_" + datatype + ".pkl", 'wb') as out_f:
-            pickle.dump(graph_data, out_f)
+        # Do the embedding in another thread in order for change to PYTHONHASHSEED to work correctly
+        q = mp.Queue()
+        p = mp.Process(target=fit_transform_wrapper, args=(
+            transformer, CUSTOM_KG, entities, q,))
+        p.start()
+        embeddings, literals, model = q.get()
+        p.join()
+
+        # Save the gensim model for the kbc_evaluation
+        model.save(self._base_folder + "model.model")
+        # Save the train data as an nt file for the kbc_evaluation
+        self.save_dataset_as_nt_file(preprocessed_train_data)
+        # Save the whole dataset as a
+        eval_data = EvalDataset(preprocessed_train_data,
+                                preprocessed_test_data)
+
+        with open(self._base_folder + "eval_dataset_object.pickle", "wb") as out_f:
+            pickle.dump(eval_data, out_f)
+
+        # Save the emebeddings in the usual f
+        self.embeddings = [tensor(embeddings)]
+
+        to_save = {'embeddings': self.embeddings,
+                   'test': preprocessed_test_data, 'train': preprocessed_train_data}
+        model_save_data = self._base_folder + 'model.pickle'
+
+        with open(model_save_data, 'wb') as out_f:
+            pickle.dump(to_save, out_f)
+        self._save_embeddings_and_metadata()
 
     def train_random_embeddings(self):
         rng = np.random.default_rng(seed=self._random_seed)
@@ -508,14 +544,15 @@ class NodeEmbeddings:
         ]
         self._embeddings = tensor([random_embeddings])
         self._save_embeddings_and_metadata()
-        
+
     def save_dataset_as_nt_file(self, train_data):
         """Save the dataset in the nt file format.
         """
         with open(self._base_folder + "dataset.nt", "w+", encoding="utf8") as f:
             for triple in train_data:
                 f.write(
-                    "<" + triple[0] + "> <" + triple[1] + "> <" + triple[2] + "> .\n"
+                    "<" + triple[0] + "> <" + triple[1] +
+                    "> <" + triple[2] + "> .\n"
                 )
 
 

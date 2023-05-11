@@ -339,6 +339,12 @@ class AbstractDataProvider(metaclass=ABCMeta):
                 print(f'Exception of {type(e)} {e} in id {experiment["_id"]}')
                 continue
 
+        with open('./obj/sdg_boolean_parameters.txt', 'w', encoding='utf8') as f:
+            f.write(json.dumps(sorted(list(boolean_parameters))))
+        # Creates lists and Dictionary and returns them
+        # TODO include a list of all other keys, like completion, printer etc.
+        # TODO split ratings into binary and categorical
+
         df = pd.DataFrame.from_dict(parsed_experiments)
 
         # Remove all whitespaces from a String and change it to lowercase

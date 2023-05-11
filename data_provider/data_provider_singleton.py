@@ -8,7 +8,11 @@ from typing import Optional, Tuple
 from data_provider.abstract_data_provider import AbstractDataProvider
 from data_provider.synthetic_data_provider import SyntheticDataProvider
 
+_local_db = None
+
+
 _synthetic_db = None
+
 
 def _get_synthetic_aipe_dp(ignore_singleton: bool, **kwargs):
     """
@@ -24,17 +28,21 @@ def _get_synthetic_aipe_dp(ignore_singleton: bool, **kwargs):
     elif ignore_singleton:
         return SyntheticDataProvider(**kwargs)
     elif kwargs is not None:
-        logging.warning("kwargs will only be considered upon first initialization. reusing existing SDP!")
+        logging.warning(
+            "kwargs will only be considered upon first initialization. reusing existing SDP!")
     return _synthetic_db
 
 
 _db: Tuple[AbstractDataProvider, str] | None = None
 
-def _get_data_provider(kind: Optional[str] = None, ignore_singleton: bool=False, **kwargs) -> Tuple[AbstractDataProvider, str]:
-        # TODO explicit enumeration of ABC implementations is bad practice?!
-        if kind is None:
-            raise ValueError("no DP instantiated. please provide a DP type to instantiate")
-        return eval(f'_get_{kind}_aipe_dp(ignore_singleton, **kwargs)'), kind
+
+def _get_data_provider(kind: Optional[str] = None, ignore_singleton: bool = False, **kwargs) -> Tuple[AbstractDataProvider, str]:
+    # TODO explicit enumeration of ABC implementations is bad practice?!
+    if kind is None:
+        raise ValueError(
+            "no DP instantiated. please provide a DP type to instantiate")
+    return eval(f'_get_{kind}_aipe_dp(ignore_singleton, **kwargs)'), kind
+
 
 def get_data_provider(kind: Optional[str] = None, ignore_singleton: bool = False, **kwargs) -> AbstractDataProvider:
     """
@@ -52,7 +60,8 @@ def get_data_provider(kind: Optional[str] = None, ignore_singleton: bool = False
         _db = _get_data_provider(kind, **kwargs)
     else:
         if kind is not None and _db[1] != kind:
-            raise ValueError(f"global DP already exists but is of type {_db[1]} != requested {kind}!")
+            raise ValueError(
+                f"global DP already exists but is of type {_db[1]} != requested {kind}!")
     return _db[0]
 
 

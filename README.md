@@ -19,17 +19,19 @@
 
 In order to train the embeddings & prepare the evaluation either for LinkPrediction (hits@k & AMRI) or Matches (matches@k) and the amount of iterations required execute:
 
-`python -m knowledge_infusion.compare_methods.compare_methods --config LinkPrediction --iterations 30`
+`python -m knowledge_infusion.compare_methods.compare_methods --iterations 30 --config LinkPrediction --dp synthetic --rule-extraction FromEdge --knowledge-extraction groundtruth`
+or
+`python -m knowledge_infusion.compare_methods.compare_methods --iterations 30 --config Matches --dp synthetic --rule-extraction FromEdge --knowledge-extraction groundtruth`
 
 ### Generating the evaluations
 
 After generating the embeddings execute:
 
-`python -m knowledge_infusion.compare_methods.generate_output_files`
+`python -m knowledge_infusion.compare_methods.evaluation_linkpred`
 for hits@k and AMRI or
-`python -m knowledge_infusion.compare_methods.generate_output_files`
+`python -m knowledge_infusion.compare_methods.evaluation_matchesatk`
 for matches@k
 
 This will generate the resulting tables for:
-- Each iteration in [knowledge_infusion/compare_methods/results/iteration*/_table_format/]()
-- all iterations combined in [knowledge_infusion/compare_methods/results/_table_format/]()
+- LinkPrediction in [knowledge_infusion/compare_methods/results/LinkPrediction/SYNTHETIC/FROM_EDGES/groundtruth/combined_eval_results_with_std]()
+- Matches@k in [knowledge_infusion/compare_methods/results/LinkPrediction/SYNTHETIC/FROM_EDGES/groundtruth/_tables]()

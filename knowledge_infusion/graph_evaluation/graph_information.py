@@ -29,22 +29,23 @@ def generate_graph_information(
 
     el = []
     for _, edge in edges.iterrows():
-        if knowledge_graph_type == "quantified_conditions_with_literal" and edge.loc['literal_included'] != 'None':
+        if "with_literal" in knowledge_graph_type and edge.loc['literal_included'] != 'None':
             continue
         elif knowledge_graph_type == 'basic':
             el.append(str(edge.loc['from']) + "||" + str(edge.loc['to']))
         else:
             el.append(str(edge.loc['from']) + "||" + str(edge.loc['to']))
 
-    G = nx.parse_edgelist(el, delimiter="||", create_using=nx.DiGraph).to_directed()
+    G = nx.parse_edgelist(el, delimiter="||",
+                          create_using=nx.DiGraph).to_directed()
 
     closness_centrality = nx.closeness_centrality(G).values()
     degree_centrality = nx.degree_centrality(G).values()
     avgnbdeg = nx.average_neighbor_degree(G, source="in+out").values()
-    
+
     if "_with_literal" in knowledge_graph_type:
         nolit = metadata.loc[metadata['type'] == 'value'].shape[0]
-        
+
     else:
         nolit = 0
 
@@ -52,6 +53,9 @@ def generate_graph_information(
 
     sum_of_edges = sum(dict(degrees).values())
     avg_degree = sum_of_edges / G.number_of_nodes()
+    avg_degree_mean = mean(dict(degrees).values())
+    avg_degree_std = stdev(dict(degrees).values())
+    assert(avg_degree == avg_degree_mean)
 
     relations = {
         r for _, r, _ in np.concatenate((train_data.triples, test_data.triples))
@@ -66,7 +70,7 @@ def generate_graph_information(
         'closeness centrality': str(round(mean(closness_centrality), 2)) + "±" + str(round(stdev(closness_centrality), 2)),
         'degree centrality': str(round(mean(degree_centrality), 2)) + "±" + str(round(stdev(degree_centrality), 2)),
         'avg. nb. degree': str(round(mean(avgnbdeg), 2)) + "±" + str(round(stdev(avgnbdeg), 2)),
-        'avg. degree': avg_degree
+        'avg. degree': str(round(avg_degree_mean, 2)) + "±" + str(round(avg_degree_std, 2))
     }
     with open(base_folder + knowledge_graph_type + ".pkl", 'wb') as out_f:
         pickle.dump(graph_data, out_f)

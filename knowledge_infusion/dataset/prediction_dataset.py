@@ -17,6 +17,8 @@ from data_provider.knowledge_graphs.config.knowledge_graph_generator_config \
 from data_provider.synthetic_data_generation.config.sdg_config import SdgConfig
 from knowledge_extraction.rule_to_representation import get_graph_from_data_provider
 from knowledge_infusion.dataset.dataset_handler import DatasetHandler
+from knowledge_infusion.graph_embeddings.embedding_config import KnowledgeExtractionMethod
+from rule_base.rule_extraction import RuleExtractionMethod, FromEdge
 
 
 class PredictionDataset(Dataset, ABC):
@@ -29,14 +31,18 @@ class PredictionDataset(Dataset, ABC):
     _rating_dim: int
     _parameter_dim: int
 
+    _graph: Optional[igraph.Graph]
+
     def __init__(self, dataset_handler: DatasetHandler):
         self._dataset_handler = dataset_handler
         self._contiguous_experiments: List[Tuple[int, int]] = dataset_handler.contiguous_experiments
         self.transform = ToTensor()
         self.target_transform = ToTensor()
 
-        self.parameter_dim = 46#
+        self.parameter_dim = 46
         self.rating_dim = 13
+
+        self._graph = None
 
     @property
     def input_dim(self) -> int:
@@ -97,16 +103,30 @@ class PredictionDataset(Dataset, ABC):
     def get_knowledge_graph(
         self,
         sdg_config: Optional[SdgConfig] = None,
-        kg_config: Optional[KnowledgeGraphGeneratorConfig] = None
+        kg_config: Optional[KnowledgeGraphGeneratorConfig] = None,
+        knowledge_extraction_method: KnowledgeExtractionMethod \
+            = KnowledgeExtractionMethod.AGGREGATE_UNFILTERED,
+        rule_extraction_method: RuleExtractionMethod = FromEdge,
+        **kwargs
     ) -> igraph.Graph:
         """
         Returns the knowledge graph of the dataset.
         :param sdg_config: Optional sdg config to use for the kg generation
         :param kg_config: Optional kg config to use for the kg generation
+        :param knowledge_extraction_method: knowledge extraction method used to generate the kg
+        :param kwargs:
+            - knowledge_extraction_weight_function: weight function used for knowledge extraction
+            - knowledge_extraction_filter_function: filter function used for knowledge extraction
+
         :return: Generated kg
         """
-        return get_graph_from_data_provider(
-            self._dataset_handler.data_provider,
-            sdg_config,
-            kg_config
-        )
+        if self._graph is None:
+            self._graph = get_graph_from_data_provider(
+                self._dataset_handler.data_provider,
+                sdg_config,
+                kg_config,
+                knowledge_extraction_method=knowledge_extraction_method,
+                rule_extraction_method=rule_extraction_method,
+                **kwargs
+            )
+        return self._graph

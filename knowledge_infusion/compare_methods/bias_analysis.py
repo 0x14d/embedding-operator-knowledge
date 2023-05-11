@@ -12,6 +12,9 @@ import math
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 
+import pandas as pd
+
+
 @dataclass
 class TripleBiasResult:
     """Bias results for a single kg triple"""
@@ -36,6 +39,7 @@ class TripleBiasResult:
 
     count: int = field(init=False, default=1)
     """Count how ofter this triple occures in the data (same tuples have the same results)"""
+
 
 @dataclass
 class LinkPredictionBiasAnalysis:
@@ -76,9 +80,12 @@ class LinkPredictionBiasAnalysis:
                 self.results[triple].count += 1
                 continue
 
-            type1_head_bias, type1_tail_bias = self._calculate_type_1_bias(*triple)
-            type2_head_bias, type2_tail_bias= self._calculate_type_2_bias(*triple)
-            type3_head_bias, type3_tail_bias = self._calculate_type_3_bias(*triple)
+            type1_head_bias, type1_tail_bias = self._calculate_type_1_bias(
+                *triple)
+            type2_head_bias, type2_tail_bias = self._calculate_type_2_bias(
+                *triple)
+            type3_head_bias, type3_tail_bias = self._calculate_type_3_bias(
+                *triple)
             self.results[triple] = TripleBiasResult(
                 type1_head_bias=type1_head_bias,
                 type2_head_bias=type2_head_bias,
@@ -90,10 +97,10 @@ class LinkPredictionBiasAnalysis:
 
     def _get_triples(
         self,
-        head: Optional[str]=None,
-        relation: Optional[str]=None,
-        tail: Optional[str]=None,
-        use_train: bool=True,
+        head: Optional[str] = None,
+        relation: Optional[str] = None,
+        tail: Optional[str] = None,
+        use_train: bool = True,
         use_test: bool = False
     ) -> List[Tuple[str, str, str]]:
         """
@@ -111,7 +118,8 @@ class LinkPredictionBiasAnalysis:
         Returns:
             List of all triples matching the specified criteria
         """
-        triples = (self.train_data if use_train else []) + (self.test_data if use_test else [])
+        triples = (self.train_data if use_train else []) + \
+            (self.test_data if use_test else [])
         return [
             (h, r, t) for h, r, t in triples
             if head in [h, None] and relation in [r, None] and tail in [t, None]
@@ -136,8 +144,10 @@ class LinkPredictionBiasAnalysis:
         count_relation = float(len(self._get_triples(relation=relation)))
         if count_relation == 0:
             return math.nan, math.nan
-        head_bias = len(self._get_triples(relation=relation, head=head)) / count_relation
-        tail_bias = len(self._get_triples(relation=relation, tail=tail)) / count_relation
+        head_bias = len(self._get_triples(
+            relation=relation, head=head)) / count_relation
+        tail_bias = len(self._get_triples(
+            relation=relation, tail=tail)) / count_relation
         return head_bias, tail_bias
 
     def _calculate_type_2_bias(self, head: str, relation: str, tail: str) -> Tuple[float, float]:
@@ -169,20 +179,23 @@ class LinkPredictionBiasAnalysis:
             Returns:
                 occurrences of the most occuring head, occurrences of the most occuring tail
             """
-            triples = self._get_triples(relation=relation, use_train=True, use_test=True)
+            triples = self._get_triples(
+                relation=relation, use_train=True, use_test=True)
             heads = {h for h, _, _ in triples}
             tails = {t for _, _, t in triples}
 
             m_tail = max([
-               len({
+                len({
                     t for _, _, t in
-                    self._get_triples(head=h, relation=relation, use_train=True, use_test=True)
+                    self._get_triples(head=h, relation=relation,
+                                      use_train=True, use_test=True)
                 }) for h in heads
             ])
             m_head = max([
-               len({
+                len({
                     h for h, _, _ in
-                    self._get_triples(tail=t, relation=relation, use_train=True, use_test=True)
+                    self._get_triples(tail=t, relation=relation,
+                                      use_train=True, use_test=True)
                 }) for t in tails
             ])
 
@@ -192,21 +205,25 @@ class LinkPredictionBiasAnalysis:
 
         head_bias = math.nan
         if m_tail > 1:
-            tails_with_relation = {t for _, _, t in self._get_triples(relation=relation)}
+            tails_with_relation = {t for _, _,
+                                   t in self._get_triples(relation=relation)}
             tails_with_relation_and_head = {
                 t for _, _, t in self._get_triples(relation=relation, head=head)
             }
             if len(tails_with_relation) != 0:
-                head_bias = float(len(tails_with_relation_and_head)) / len(tails_with_relation)
+                head_bias = float(
+                    len(tails_with_relation_and_head)) / len(tails_with_relation)
 
         tail_bias = math.nan
         if m_head > 1:
-            heads_with_relation = {h for h, _, _ in self._get_triples(relation=relation)}
+            heads_with_relation = {h for h, _,
+                                   _ in self._get_triples(relation=relation)}
             heads_with_relation_and_tails = {
                 h for h, _, _ in self._get_triples(relation=relation, tail=tail)
             }
             if len(heads_with_relation) != 0:
-                tail_bias = float(len(heads_with_relation_and_tails)) / len(heads_with_relation)
+                tail_bias = float(
+                    len(heads_with_relation_and_tails)) / len(heads_with_relation)
 
         return head_bias, tail_bias
 
@@ -236,8 +253,10 @@ class LinkPredictionBiasAnalysis:
             Retuns:
                 Set of all intersecting relations
             """
-            relation_heads_and_tails = {(h, t) for h, _, t in self._get_triples(relation=relation)}
-            other_relations = {r for _, r, _ in self.train_data + self.test_data if r != relation}
+            relation_heads_and_tails = {
+                (h, t) for h, _, t in self._get_triples(relation=relation)}
+            other_relations = {
+                r for _, r, _ in self.train_data + self.test_data if r != relation}
             dominating_relations = set()
             for other_relation in other_relations:
                 other_relation_heads_and_tails = {
@@ -289,7 +308,8 @@ class LinkPredictionBiasAnalysis:
                 value = getattr(result, f'type{bias_type}_{head_tail}_bias')
                 if math.isnan(value):
                     return True
-                threshold = getattr(self, f'type{bias_type}_threshold') if bias_type != 3 else 1.0
+                threshold = getattr(
+                    self, f'type{bias_type}_threshold') if bias_type != 3 else 1.0
                 if value >= threshold:
                     return False
             return True
@@ -298,6 +318,7 @@ class LinkPredictionBiasAnalysis:
             k: v for k, v in self.results.items() if threshold_filter(v)
         }
 
+
 if __name__ == '__main__':
     # pylint: disable=ungrouped-imports
     import argparse
@@ -305,13 +326,13 @@ if __name__ == '__main__':
     import pandas as pd
     from data_provider.knowledge_graphs.config.knowledge_graph_generator_config \
         import KnowledgeGraphGeneratorType
-    from data_provider.synthetic_data_provider import SyntheticDataProvider
     from data_provider.synthetic_data_generation.config.sdg_config import SdgConfig
     from data_provider.knowledge_graphs.config.knowledge_graph_generator_config \
         import parse_knowledge_graph_generator_config
     from knowledge_infusion.graph_embeddings.utils.train_test_split \
         import kg_train_test_split
-    from knowledge_infusion.graph_embeddings.utils.knowledge_graph_import import import_knowledge_graph
+    from knowledge_infusion.graph_embeddings.utils.knowledge_graph_import \
+        import import_knowledge_graph
     from knowledge_infusion.compare_methods.configs.compare_methods_config import AmriConfig
     from knowledge_infusion.utils.schemas import TrainConfig
 
@@ -324,21 +345,37 @@ if __name__ == '__main__':
         default=True,
         action=argparse.BooleanOptionalAction
     )
-
+    parser.add_argument(
+        '--dataprovider',
+        help='Used dataprovider (synthetic or aipe)',
+        default='synthetic',
+        type=str,
+        choices=['synthetic', 'aipe']
+    )
     args = parser.parse_args()
+
+    if args.dataprovider == 'aipe':
+        # AIPE dataprovider with cache
+        from data_provider.cache_aipe_data_provider import CacheAIPEDataProvider
+        data_provider = CacheAIPEDataProvider()
 
     amri_config = AmriConfig()
     sdg_config = SdgConfig.create_config(amri_config.sdg_config)
     train_config = TrainConfig.parse_file(amri_config.train_config)
 
     for use_literals in [True, False]:
-        results: Dict[KnowledgeGraphGeneratorType, LinkPredictionBiasAnalysis] = {}
+        results: Dict[KnowledgeGraphGeneratorType,
+                      LinkPredictionBiasAnalysis] = {}
         graphs: Dict[KnowledgeGraphGeneratorType, igraph.Graph] = {}
         split_sizes: Dict[KnowledgeGraphGeneratorType, Tuple[int, int]] = {}
         for kg_type in KnowledgeGraphGeneratorType:
 
-            sdg_config.knowledge_graph_generator = parse_knowledge_graph_generator_config(kg_type)
-            data_provider = SyntheticDataProvider(sdg_config)
+            sdg_config.knowledge_graph_generator = parse_knowledge_graph_generator_config(
+                kg_type)
+
+            if args.dataprovider == 'synthetic':
+                from data_provider.synthetic_data_provider import SyntheticDataProvider
+                data_provider = SyntheticDataProvider(sdg_config)
 
             graphs[kg_type], _ = import_knowledge_graph(
                 directory=None,
@@ -408,7 +445,8 @@ if __name__ == '__main__':
             for kg, res in results.items()
         ]
         mdix = pd.MultiIndex.from_product([
-            ['Test Predictions'], ['w/o B1', 'w/o B2', 'w/o B3', 'w/o B*'], ['Head', 'Tail']
+            ['Test Predictions'], ['w/o B1', 'w/o B2',
+                                   'w/o B3', 'w/o B*'], ['Head', 'Tail']
         ])
         dataframes.append(
             pd.DataFrame(data, columns=mdix, index=index)
@@ -417,5 +455,7 @@ if __name__ == '__main__':
         # Save results
         for i, df in enumerate(dataframes):
             SUFFIX = 'literals' if use_literals else 'no-literals'
-            df.to_excel(f'knowledge_infusion/compare_methods/lp_bias_{SUFFIX}_{i}.xlsx')
-            df.to_latex(f'knowledge_infusion/compare_methods/lp_bias_{SUFFIX}_{i}.tex')
+            df.to_excel(
+                f'knowledge_infusion/compare_methods/lp_bias_{SUFFIX}_{i}.xlsx')
+            df.to_latex(
+                f'knowledge_infusion/compare_methods/lp_bias_{SUFFIX}_{i}.tex', escape=False)

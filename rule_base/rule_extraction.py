@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from enum import Enum
 from functools import partial
 from typing import Iterable, Callable, Mapping, MutableMapping, Sequence, Any
-from typing import Optional
+from typing import Optional, Union, List, Dict
 import warnings
 
 import igraph
@@ -38,7 +38,9 @@ from data_provider import data_provider_singleton
 import knowledge_graph as kg
 from preprocessing import LabelEncoderForColumns
 from utilities import pairwise
-from .rule import Rule
+from rule_base.quantified_conclusions_rule import QuantifiedConclusionsRule
+from rule_base.quantified_conditions_rule import QuantifiedConditionsRule
+from rule_base.rule import Rule
 
 
 class KgToRuleMode(Enum):
@@ -89,9 +91,8 @@ BinnedInfluencesFunction = partial(
 ''' Extract Rules from KG by fitting a provided Estimator pipeline to the influence-parameter values and sampling this function subsequently'''
 
 
-
 def merge_similar_rules(
-    rules: Mapping[str, Iterable[Rule]],
+    rules: Mapping[str, Iterable[QuantifiedConditionsRule]],
     inf_key: str,
     parameter_df: pd.DataFrame,
     rel_parameter_values: Mapping[str,
@@ -102,12 +103,12 @@ def merge_similar_rules(
                                            MutableMapping[str,
                                                           Iterable[float]]]],
     label_encoder: LabelEncoderForColumns | None = None,
-    _bins: str | int | Sequence[int | float]='doane'
-) -> list[Rule]:
+    _bins: Union[str, int, Sequence[int | float]] = 'doane'
+) -> List[QuantifiedConditionsRule]:
     """merge rules with equal / similar relative parameter changes
 
     Args:
-        rules (Mapping[str, Iterable[Rule]]): dictionary of (condition range, list of Rules)
+        rules (Mapping[str, Iterable[QuantifiedConditionsRule]]): dictionary of (condition range, list of Rules)
         inf_key (str): influence/condition name
         parameter_df (pd.DataFrame): KG parameter dataframe
         rel_parameter_values (Mapping[str, Mapping[str, MutableMapping[str, Iterable[float]]]]): nested dictionary of "raw" relative parameter values: dict[influence name][condition range][parameter name]
@@ -120,9 +121,9 @@ def merge_similar_rules(
     """
 
     def calculate_bin_edges_for_all_rules(
-        all_rules: Mapping[str, Iterable[Rule]],
-        bins: str | int | Sequence[int | float]='doane'
-    ) -> dict[str, npt.NDArray[np.float64]]:
+        all_rules: Mapping[str, Iterable[QuantifiedConditionsRule]],
+        bins: Union[str, int, Sequence[int | float]] = 'doane'
+    ) -> Dict[str, npt.NDArray[np.float64]]:
         """calculate `np.histogram_bin_edges` for all rules of all parameter types
 
         Args:
@@ -132,14 +133,20 @@ def merge_similar_rules(
             dict[str, npt.NDArray[np.float64]]: dictionary[parameter name] => np.array[bin edges]
         """
 
-        def calculate_bin_edges(l_r: list[Rule], _bins: str | int | Sequence[int | float]):
-            step_sizes = np.array([r.step_size for r in l_r])
-            bins_ = np.histogram_bin_edges(step_sizes[~np.isnan(step_sizes)], bins=_bins)
+        def calculate_bin_edges(
+            l_r: List[QuantifiedConditionsRule],
+            _bins: Union[str, int, Sequence[int | float]]
+        ):
+            step_sizes = np.array(
+                [r.relative_mean_value for r in l_r if r.relative_mean_value is not None])
+            bins_ = np.histogram_bin_edges(
+                step_sizes[~np.isnan(step_sizes)], bins=_bins)
             # TODO best binning function? 'auto' migh be better. should be passed as function argument explicitly in the future
             return bins_
 
-        dict_bin_edges: defaultdict[str, npt.NDArray[np.float64]] = defaultdict()
-        dict_rules: defaultdict[str, list[Rule]] = defaultdict(list)
+        dict_bin_edges: Dict[str, npt.NDArray[np.float64]] = defaultdict()
+        dict_rules: Dict[str, list[QuantifiedConditionsRule]
+                         ] = defaultdict(list)
         for influence_range in all_rules.keys():
             for parameter_key_ in parameter_df.keys():
                 param_rules = [
@@ -153,9 +160,9 @@ def merge_similar_rules(
             dict_bin_edges[parameter_key] = bin_edges
         return dict_bin_edges
 
-    def rule_equality(rule_a: Rule, rule_b: Rule, bin_edges: npt.NDArray[np.float64]):
+    def rule_equality(rule_a: QuantifiedConditionsRule, rule_b: QuantifiedConditionsRule, bin_edges: npt.NDArray[np.float64]):
         """check if rules are similar enough to be merged.
-        for string or boolean rules, if same action quantifier, for numerical if step_size is in the same bin
+        for string or boolean rules, if same action quantifier, for numerical if relative or absolute value is in the same bin
         """
         if not Rule.highlevel_eq(rule_a, rule_b):
             raise ValueError("differing condition or parameter")
@@ -165,17 +172,29 @@ def merge_similar_rules(
         if rule_a.parameter_type in [Rule.ParamType.STRING, Rule.ParamType.BOOLEAN]:
             return rule_a.action_quantifier == rule_b.action_quantifier
         elif rule_a.parameter_type == Rule.ParamType.NUMERICAL:
-            if rule_a.step_size is None or rule_a.step_size is None or np.isnan(
-                    rule_a.step_size) or np.isnan(rule_b.step_size):
+            if not rule_a.is_low_level_conclusion_comparable() or \
+               not rule_a.is_low_level_condition_comparable() or \
+               not rule_b.is_low_level_conclusion_comparable() or \
+               not rule_b.is_low_level_condition_comparable():
+                return False
+            if rule_a.relative_mean_value is not None and rule_b.relative_mean_value is not None and not np.isnan(
+                    rule_a.relative_mean_value) and not np.isnan(rule_b.relative_mean_value):
+                return custom_digitize(rule_a.relative_mean_value,
+                                       bin_edges) == custom_digitize(rule_b.relative_mean_value, bin_edges)
+            elif rule_a.absolute_mean_value is not None and rule_b.absolute_mean_value is not None and not np.isnan(
+                    rule_a.absolute_mean_value) and not np.isnan(rule_b.absolute_mean_value):
+                return custom_digitize(rule_a.absolute_mean_value,
+                                       bin_edges) == custom_digitize(rule_b.absolute_mean_value, bin_edges)
+            else:
                 raise ValueError("trying to compare empty bins")
-            return custom_digitize(rule_a.step_size,
-                                   bin_edges) == custom_digitize(rule_b.step_size, bin_edges)
         else:
-            raise ValueError(f"unknown parameter type: {rule_a.parameter_type}")
+            raise ValueError(
+                f"unknown parameter type: {rule_a.parameter_type}")
 
-    dict_bin_edges_by_parameter = calculate_bin_edges_for_all_rules(rules, _bins)
+    dict_bin_edges_by_parameter = calculate_bin_edges_for_all_rules(
+        rules, _bins)
 
-    output_rules: dict[str, list[Rule]] = defaultdict(list)
+    output_rules: dict[str, list[QuantifiedConditionsRule]] = defaultdict(list)
     for parameter_key in parameter_df.keys():
         rules_for_param = sorted([(bin_, r) for (bin_, l) in rules.items()
                                   for r in l if r.parameter == parameter_key],
@@ -197,17 +216,21 @@ def merge_similar_rules(
                     rules_are_mergeable = rule_equality(
                         candidate_a_rule, candidate_b_rule,
                         dict_bin_edges_by_parameter[parameter_key])
-                except ValueError as e:
-                    logging.exception(e)
-                    logging.error(
-                        f"a: {candidate_a_rule},  b: {candidate_b_rule}")
+                except ValueError as error:
+                    logging.exception(error)
+                    logging.error("a: %s,  b: %s",
+                                  candidate_a_rule, candidate_b_rule)
                     continue
                 if rules_are_mergeable:
+                    logging.debug("merge candiate found: %s - %s",
+                                  candidate_a_rule, candidate_b_rule)
                     logging.debug(
-                        f"merge candiate found: {candidate_a_rule} - {candidate_b_rule}"
-                    )
-                    logging.debug(
-                        f"bins: {dict_bin_edges_by_parameter[parameter_key]} indizes: A, B: {custom_digitize(candidate_a_rule.step_size, dict_bin_edges_by_parameter[parameter_key])}, {custom_digitize(candidate_b_rule.step_size, dict_bin_edges_by_parameter[parameter_key])}"
+                        "bins: %s indizes: A, B: %s, %s",
+                        dict_bin_edges_by_parameter[parameter_key],
+                        custom_digitize(candidate_a_rule.relative_mean_value,
+                                        dict_bin_edges_by_parameter[parameter_key]),
+                        custom_digitize(candidate_b_rule.relative_mean_value,
+                                        dict_bin_edges_by_parameter[parameter_key])
                     )
 
                     logging.debug("raw relative param values: ")
@@ -215,37 +238,29 @@ def merge_similar_rules(
                         candidate_a_bin_range][parameter_key]
                     b_rel_param_vals = rel_parameter_values[inf_key][
                         candidate_b_bin_range][parameter_key]
-                    logging.debug(
-                        f"relative A:  {a_rel_param_vals}\trelative B: {b_rel_param_vals}"
-                    )
+                    logging.debug("relative A:  %s\trelative B: %s",
+                                  a_rel_param_vals, b_rel_param_vals)
                     ab_rel_param_vals = a_rel_param_vals + b_rel_param_vals
-                    logging.debug(
-                        f"relative mean: {np.mean(ab_rel_param_vals)}\tstd: {np.std(ab_rel_param_vals)}"
-                    )
-
+                    logging.debug("relative mean: %f\tstd: %f", np.mean(
+                        ab_rel_param_vals), np.std(ab_rel_param_vals))
                     logging.debug("raw absolute parameter values: ")
                     a_abs_param_vals = parameter_values[inf_key][
                         candidate_a_bin_range][parameter_key]
                     b_abs_param_vals = parameter_values[inf_key][
                         candidate_b_bin_range][parameter_key]
-                    logging.debug(
-                        f"absolute A:  {a_abs_param_vals}\tabsolute B: {b_abs_param_vals}"
-                    )
-                    logging.debug(
-                        f"candidate A:  {a_abs_param_vals}\tcandidate B: {b_abs_param_vals}"
-                    )
+                    logging.debug("absolute A:  %s\tabsolute B: %s",
+                                  a_abs_param_vals, b_abs_param_vals)
                     ab_abs_param_vals = a_abs_param_vals + b_abs_param_vals
-                    logging.debug(
-                        f"mean: {np.mean(ab_abs_param_vals)}\tstd: {np.std(ab_abs_param_vals)}"
-                    )
+                    logging.debug("mean: %f\tstd: %f", np.mean(
+                        ab_abs_param_vals), np.std(ab_abs_param_vals))
 
                     new_condition_range = (candidate_a_rule.condition_range[0],
                                            candidate_b_rule.condition_range[1])
                     parameter_type = candidate_a_rule.parameter_type
-                    r = Rule.from_relation(parameter_key, inf_key,
-                                           parameter_type, ab_abs_param_vals,
-                                           ab_rel_param_vals,
-                                           new_condition_range, label_encoder)
+                    r = QuantifiedConditionsRule.from_relation(parameter_key, inf_key,
+                                                               parameter_type, ab_abs_param_vals,
+                                                               ab_rel_param_vals, label_encoder,
+                                                               condition_range=new_condition_range)
                     logging.debug(str(r))
                     range_str = str(new_condition_range)
                     # update dictionary of "raw values" for consecutive merges
@@ -279,6 +294,12 @@ def custom_digitize(x: npt.ArrayLike,
                     bins: npt.NDArray[np.float64]) -> npt.NDArray[np.intp]:
     """return indices of the bins to which values in input array belongs, with the rightmost bin including the right edge (x <= bins[i_max])
     """
+    try:
+        x = [_x for _x in x if _x is not None]
+    except TypeError:
+        x = [x] if x is not None else []
+    if len(x) == 0:
+        return np.array([])
     x = np.array(x)
     x = np.expand_dims(x, axis=0) if x.ndim == 0 else x
     indices = np.digitize(x, bins)
@@ -406,7 +427,6 @@ def kg_to_improvement_rules(
     mode = rule_extraction_method.mode
     label_encoder = kwargs.pop('label_encoder', None)
 
-
     if mode == KgToRuleMode.FROM_EDGES:
 
         def get_start_and_target_vertices(edge_):
@@ -429,8 +449,8 @@ def kg_to_improvement_rules(
                 param_type = Rule.ParamType.NUMERICAL
 
             rule = rule_from_edge(relative_params_df, params_df, influences_df,
-                                  influence_bin_data, influence['name'],
-                                  parameter['name'], param_type, label_encoder, **kwargs)
+                                  influence['name'], parameter['name'], param_type,
+                                  label_encoder, **kwargs)
 
             list_of_expert_rules.append(rule)
 
@@ -469,11 +489,12 @@ def rule_from_edge(
     relative_params_df: pd.DataFrame,
     params_df: pd.DataFrame,
     influences_df: pd.DataFrame,
-    influence_bin_data: Mapping[str, tuple[np.ndarray, np.ndarray]],
     influence_name: str,
     parameter_name: str,
     param_type: Rule.ParamType = Rule.ParamType.UNKNOWN,
     label_encoder: LabelEncoderForColumns | None = None,
+    influence_bin_data: Optional[Mapping[str,
+                                         tuple[np.ndarray, np.ndarray]]] = None,
     **kwargs
 ) -> Rule:
     """create a Rule from a Knowledge Graph relation (edge).
@@ -482,10 +503,13 @@ def rule_from_edge(
         relative_params_df (pd.DataFrame): dataframe containing changed relative parameter values
         params_df (pd.DataFrame): dataframe containing changed absolute parameter values
         influences_df (pd.DataFrame): dataframe containing influence (condition) values
-        influence_bin_data (Mapping[str, tuple[np.ndarray, np.ndarray]]): dictionary[influence name] = result of `np.histogram`= (histogram, bin_edges)
         influence_name (str): name of the influence
         parameter_name (str): name of the parameter
-        param_type (Rule.ParamType, optional): Rule parameter type. Defaults to Rule.ParamType.UNKNOWN.
+        param_type (Rule.ParamType, optional): Rule parameter type.
+        Defaults to Rule.ParamType.UNKNOWN.
+        influence_bin_data (Mapping[str, tuple[np.ndarray, np.ndarray]], optional):
+        dictionary[influence name] = result of `np.histogram = (histogram, bin_edges).
+        If provided a `QuantifiedConditionsRule` will be created otherwise a `QuantifiedConclusionsRule`
 
     Returns:
         Rule: rule created from KG edge
@@ -493,23 +517,25 @@ def rule_from_edge(
     if label_encoder is None:
         label_encoder = data_provider_singleton.get_label_encoder(**kwargs)
 
+    if influence_bin_data is not None:
+        _, condition_bin_edges = influence_bin_data[influence_name]
+        x = influences_df[influence_name].mean()
+        bin_index = np.squeeze(custom_digitize(x, condition_bin_edges))
+        try:
+            lower_bin_edge = condition_bin_edges[bin_index - 1]
+            upper_bin_edge = condition_bin_edges[bin_index]
+        except IndexError as error:
+            logging.error(error)
+            logging.error("x: %f, index: %d, bins: %s", x,
+                          bin_index, condition_bin_edges)
+            std = influences_df[influence_name].std()
+            logging.info("using +- std instead: %f", std)
+            lower_bin_edge = x - std
+            upper_bin_edge = x + std
 
-    _, condition_bin_edges = influence_bin_data[influence_name]
-    x = influences_df[influence_name].mean()
-    bin_index = np.squeeze(custom_digitize(x, condition_bin_edges))
-    try:
-        lower_bin_edge = condition_bin_edges[bin_index - 1]
-        upper_bin_edge = condition_bin_edges[bin_index]
-    except IndexError as error:
-        logging.error(error)
-        logging.error(
-            f"x: {x}, index: {bin_index}, bins: {condition_bin_edges}")
-        std = influences_df[influence_name].std()
-        logging.info(f"using +- std instead: {std}")
-        lower_bin_edge = x - std
-        upper_bin_edge = x + std
-
-    condition_range = (lower_bin_edge, upper_bin_edge)
+        condition_range = (lower_bin_edge, upper_bin_edge)
+    else:
+        condition_range = None
 
     influenced_parameters = df_filtered_by_influence(params_df, influence_name,
                                                      influences_df)
@@ -522,9 +548,11 @@ def rule_from_edge(
             parameter_name].dropna()
     except KeyError:
         relative_params_values = None
-    rule = Rule.from_relation(parameter_name, influence_name, param_type,
-                              param_values, relative_params_values,
-                              condition_range, label_encoder)
+
+    rule_class = QuantifiedConclusionsRule if influence_bin_data is None else QuantifiedConditionsRule
+    rule = rule_class.from_relation(parameter_name, influence_name, param_type,
+                                    param_values, relative_params_values,
+                                    label_encoder, condition_range=condition_range)
     return rule
 
 
@@ -707,7 +735,7 @@ def create_sampled_rules(
         return xy
 
     sampled_rules: defaultdict[str, defaultdict[
-        str, list[Rule]]] = defaultdict(lambda: defaultdict(list))
+        str, list[QuantifiedConditionsRule]]] = defaultdict(lambda: defaultdict(list))
 
     estimation_data = defaultdict(lambda: defaultdict())
     fitted_estimators = defaultdict(lambda: defaultdict())
@@ -736,8 +764,8 @@ def create_sampled_rules(
             X_abs = table_abs[influence].values.reshape((-1, 1))
             y_abs = table_abs[parameter]
 
-            logging.debug(
-                f"starting grid search for : {influence}-{parameter}-pair")
+            logging.debug("starting grid search for : %s-%s-pair",
+                          influence, parameter)
 
             # try to fit classifiers for boolean and categorical, regressors for numerical tables, that best describe the p-q-relationship
             if parameter in [*boolean_parameters, *string_parameters]:
@@ -746,24 +774,24 @@ def create_sampled_rules(
             else:
                 pipeline = method.make_new_pipeline()
                 pipeline_abs = method.make_new_pipeline()
-                estimator = find_best_regressor(X, y, pipeline=pipeline, cv=cross_val)
-                estimator_abs = find_best_regressor(X_abs, y_abs, pipeline=pipeline_abs, cv=cross_val)
+                estimator = find_best_regressor(
+                    X, y, pipeline=pipeline, cv=cross_val)
+                estimator_abs = find_best_regressor(
+                    X_abs, y_abs, pipeline=pipeline_abs, cv=cross_val)
 
             estimator_total_score = estimator.score(X, y)
             if isinstance(estimator, GridSearchCV):
-                logging.debug(
-                    f"best CV score: {estimator.best_score_} with {estimator.scoring} for regressor {estimator.best_estimator_}"
-                )
-            logging.debug(
-                f"fitted regressor to {influence}-{parameter}-pair, score: {estimator_total_score}"
-            )
+                logging.debug(f"best CV score: %f with %s for regressor %s",
+                              estimator.best_score_, estimator.scoring, estimator.best_estimator_)
+            logging.debug("fitted regressor to %s-%s-pair, score: %f",
+                          influence, parameter, estimator_total_score)
 
             estimation_data[influence][parameter] = table
             fitted_estimators[influence][parameter] = estimator
 
             if isinstance(estimator_abs, GridSearchCV):
-                logging.debug(
-                    f"best CV score (abs): {estimator_abs.best_score_}")
+                logging.debug("best CV score (abs): %f",
+                              estimator_abs.best_score_)
             fitted_estimators_absolute[influence][parameter] = estimator_abs
 
     # sample function at discrete (baseline) influence values to create rules
@@ -816,7 +844,7 @@ def create_binned_rules(
     influences_df: pd.DataFrame,
     influence_bin_data: Mapping[str, tuple[np.ndarray, np.ndarray]],
     label_encoder: LabelEncoderForColumns | None = None
-) -> tuple[defaultdict[str, defaultdict[str, list[Rule]]], defaultdict[
+) -> tuple[defaultdict[str, defaultdict[str, list[QuantifiedConditionsRule]]], defaultdict[
         str, defaultdict[str, defaultdict[str, list[float]]]], defaultdict[
             str, defaultdict[str, defaultdict[str, list[float]]]]]:
     """create rules from KG for each influenced parameter, by discretizing influence values into bins in which rules will be created
@@ -840,7 +868,7 @@ def create_binned_rules(
         relative parameter values[influence name][condition/influence bin range][parameter name]= list[raw relative parameter values for merging]
     """
 
-    binned_rules: defaultdict[str, defaultdict[str, list[Rule]]] = defaultdict(
+    binned_rules: defaultdict[str, defaultdict[str, list[QuantifiedConditionsRule]]] = defaultdict(
         lambda: defaultdict(list))
     parameter_values: defaultdict[str, defaultdict[str, defaultdict[
         str, list[float]]]] = defaultdict(
@@ -871,11 +899,11 @@ def create_binned_rules(
                 if binned_rules[influence_key][str((lower, upper))] is None:
                     binned_rules[influence_key][str((lower, upper))] = []
                 if parameter_values[influence_key][str(
-                    (lower, upper))] is None:
+                        (lower, upper))] is None:
                     parameter_values[influence_key][str(
                         (lower, upper))][parameter_key] = []
                 if relative_parameter_values[influence_key][str(
-                    (lower, upper))][parameter_key] is None:
+                        (lower, upper))][parameter_key] is None:
                     relative_parameter_values[influence_key][str(
                         (lower, upper))][parameter_key] = []
                 if param_values.empty:
@@ -912,7 +940,7 @@ def create_rule(boolean_parameters: Iterable[str],
                 influenced_relative_parameters: pd.Series | None,
                 influence_bin: tuple[float, float],
                 label_encoder: LabelEncoderForColumns | None = None) -> Rule:
-    """create a Rule Object from the given KG relation data."""
+    """create a `QuantifiedConditionsRule` Object from the given KG relation data."""
     if label_encoder is None:
         label_encoder = data_provider_singleton.get_label_encoder()
 
@@ -922,9 +950,9 @@ def create_rule(boolean_parameters: Iterable[str],
         param_type = Rule.ParamType.STRING
     else:
         param_type = Rule.ParamType.NUMERICAL
-    rule = Rule.from_relation(parameter_name, influence_name, param_type,
-                              influenced_parameters,
-                              influenced_relative_parameters, influence_bin,
-                              label_encoder)
+    rule = QuantifiedConditionsRule.from_relation(parameter_name, influence_name, param_type,
+                                                  influenced_parameters,
+                                                  influenced_relative_parameters,
+                                                  label_encoder, condition_range=influence_bin)
 
     return rule

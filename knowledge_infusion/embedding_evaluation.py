@@ -39,7 +39,7 @@ class EmbeddingEvaluation:
             self._config = train_config_obj
         else:
             self._config: TrainConfig = TrainConfig.parse_file(config_path)
-        self._dataset_handler = DatasetHandler('ratings2param', self._config.data_provider)
+        self._dataset_handler = DatasetHandler('ratings2param', self._config.data_provider, config=self._config.sdg_config)
         self._emb_generator = EmbeddingGenerator(self._config, self._dataset_handler._data_provider, influential_only=influential_only, use_head=use_head, generate_lut=False, embedding_config=embedding_config)
         self.verts = self._emb_generator.vertecies
         if ratings is None:

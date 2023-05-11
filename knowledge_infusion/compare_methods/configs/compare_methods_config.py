@@ -2,19 +2,19 @@
 it provides an abstract class from which a concret configuration class can
 inherit.
 Additionally three example configuration classes are provided, which should be
-sufficient for most uses currently planned. (AMRI & Hits@k Evaluation, 
-Matches@k Evaluation, Debugging of the Evaluation) 
+sufficient for most uses currently planned. (AMRI & Hits@k Evaluation,
+Matches@k Evaluation, Debugging of the Evaluation)
 """
 
+# pylint: disable=import-error
+
 from abc import ABC
-from platform import node
-from typing import List
 from enum import Enum
 
-from sklearn.metrics import euclidean_distances
+from rule_base.rule_extraction import BinnedInfluences
 from knowledge_infusion.graph_embeddings.embedding_types import EmbeddingType
-
-from knowledge_infusion.graph_embeddings.embedding_config import EmbeddingConfig, NormalizationMethods, StandardConfig
+from knowledge_infusion.graph_embeddings.embedding_config import \
+    EmbeddingConfig, NormalizationMethods, StandardConfig, KnowledgeExtractionMethod
 
 
 class EvaluationMethod(Enum):
@@ -22,15 +22,15 @@ class EvaluationMethod(Enum):
     MatchesAtK = 2
 
 
-class DataProvider(Enum):
-    SYNTHETIC = 1
-    AIPE = 2
+class DataProvider(str, Enum):
+    SYNTHETIC = 'synthetic'
+    AIPE = 'fdm'
 
 
 class CompareMethodsConfig(ABC):
     """Class used to configure CompareMethods
     """
-    name: str
+    _name: str
     evaluationMethod: EvaluationMethod
     embedding_types: list[str]
     head_vals: list[bool]
@@ -43,6 +43,13 @@ class CompareMethodsConfig(ABC):
     train_config: str
     results_folder: str
     data_provider: DataProvider
+
+    @property
+    def name(self) -> str:
+        """Name of the config"""
+        return f'{self._name}/{self.data_provider.name}/' + \
+               f'{self.embedding_config.rule_extraction_method.mode.name}/' + \
+               f'{self.embedding_config.knowledge_extraction_method}'
 
     def __init__(self,
                  name: str,
@@ -57,7 +64,7 @@ class CompareMethodsConfig(ABC):
                  data_provider: DataProvider
                  ) -> None:
         super().__init__()
-        self.name = name
+        self._name = name
         self.evaluation_method = evaluation_method
         self.embedding_types = embedding_types
         self.head_vals = head_vals
@@ -68,8 +75,8 @@ class CompareMethodsConfig(ABC):
         self.embedding_config = embedding_config
         self.data_provider = data_provider
 
-        self.sdg_config = 'configs/default_config_sdg.json'
-        self.train_config = 'configs/default_train_config.json'
+        self.sdg_config = 'knowledge_infusion/hyperparameter_tuning/configs/default_config_sdg.json'
+        self.train_config = 'knowledge_infusion/hyperparameter_tuning/configs/equal_config_fnn.json'
         self.results_folder = "knowledge_infusion/compare_methods/results/"
 
     def save_configuration(self, file_location: str) -> None:
@@ -104,26 +111,27 @@ class AmriConfig(CompareMethodsConfig):
 
     def __init__(self) -> None:
         super().__init__(
-        name="amri",
-        evaluation_method=EvaluationMethod.AmriAndHitsAtK,
-        embedding_types = [
-            EmbeddingType.TransE,
-            EmbeddingType.ComplEx,
-            EmbeddingType.ComplExLiteral,
-            EmbeddingType.RotatE,
-            EmbeddingType.DistMult,
-            EmbeddingType.DistMultLiteralGated,
-            EmbeddingType.BoxE
-        ],
-        head_vals = [True],
-        distance_metrics = ["euclidean", "jaccard"],
-        generate_rdf_graph = False,
-        generate_graph_infos = False,
-        times = 1,
-        embedding_config = StandardConfig(),
-        data_provider=DataProvider.SYNTHETIC)
-        
-        
+            evaluation_method=EvaluationMethod.AmriAndHitsAtK,
+            embedding_types=[
+                EmbeddingType.TransE,
+                EmbeddingType.ComplEx,
+                EmbeddingType.ComplExLiteral,
+                EmbeddingType.RotatE,
+                EmbeddingType.DistMult,
+                EmbeddingType.DistMultLiteralGated,
+                EmbeddingType.BoxE,
+                EmbeddingType.Rdf2Vec
+            ],
+            head_vals=[True],
+            distance_metrics=["euclidean", "jaccard"],
+            generate_rdf_graph=False,
+            generate_graph_infos=True,
+            times=1,
+            embedding_config=StandardConfig(),
+            data_provider=DataProvider.AIPE,
+            name="LinkPrediction")
+
+
 class MatchesAtKConfig(CompareMethodsConfig):
     """This config should be used for evaluating the knowledge graphs with the
     matches@k metrik
@@ -131,7 +139,6 @@ class MatchesAtKConfig(CompareMethodsConfig):
 
     def __init__(self) -> None:
         super().__init__(
-            name="default",
             evaluation_method=EvaluationMethod.MatchesAtK,
             embedding_types=[
                 EmbeddingType.TransE,
@@ -140,7 +147,8 @@ class MatchesAtKConfig(CompareMethodsConfig):
                 EmbeddingType.RotatE,
                 EmbeddingType.DistMult,
                 EmbeddingType.DistMultLiteralGated,
-                EmbeddingType.BoxE
+                EmbeddingType.BoxE,
+                EmbeddingType.Rdf2Vec
             ],
             head_vals=[True, False],
             distance_metrics=["euclidean", "jaccard"],
@@ -148,7 +156,8 @@ class MatchesAtKConfig(CompareMethodsConfig):
             generate_graph_infos=False,
             times=1,
             embedding_config=StandardConfig(),
-            data_provider=DataProvider.SYNTHETIC)
+            data_provider=DataProvider.AIPE,
+            name="Matches")
 
 
 class DebugConfig(CompareMethodsConfig):
@@ -157,21 +166,20 @@ class DebugConfig(CompareMethodsConfig):
 
     def __init__(self) -> None:
         super().__init__(
-        name="debug",
-        evaluation_method=EvaluationMethod.AmriAndHitsAtK,
-        embedding_types = [
-            EmbeddingType.TransE,
-            EmbeddingType.Rdf2Vec
-        ],
-        head_vals = [True],
-        distance_metrics = ["euclidean", "jaccard"],
-        generate_rdf_graph = False,
-        generate_graph_infos = False,
-        times = 1,
-        embedding_config = NodeEmbeddingDebugConfig(),
-        data_provider=DataProvider.SYNTHETIC)
-        
-        
+            name="debug",
+            evaluation_method=EvaluationMethod.AmriAndHitsAtK,
+            embedding_types=[
+                EmbeddingType.TransE
+            ],
+            head_vals=[True],
+            distance_metrics=["euclidean"],
+            generate_rdf_graph=True,
+            generate_graph_infos=True,
+            times=1,
+            embedding_config=NodeEmbeddingDebugConfig(),
+            data_provider=DataProvider.SYNTHETIC)
+
+
 class NodeEmbeddingDebugConfig(EmbeddingConfig):
     """This is a custom node embedding config for debug purposes and is used
     by the debug config. When using this config each embedding will only train
@@ -193,5 +201,9 @@ class NodeEmbeddingDebugConfig(EmbeddingConfig):
             train_test_split=0.2,
             rdf2vec_walker_max_depth=4,
             rdf2vec_walker_max_walks=2,
-            subkg_normalization_method=NormalizationMethods.number_nodes)
-
+            subkg_normalization_method=NormalizationMethods.number_nodes,
+            knowledge_extraction_method=KnowledgeExtractionMethod.AGGREGATE_UNFILTERED,
+            knowledge_extraction_filter_function=None,
+            knowledge_extraction_weight_function=None,
+            rule_extraction_method=BinnedInfluences
+            )

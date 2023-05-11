@@ -138,8 +138,8 @@ def get_edge_attributes_for_graph_visualization(graph: igraph.Graph,
         try:
             rule_str = str(
                 rule_from_edge(relative_params, params, influences,
-                               influence_bin_data, influence, parameter,
-                               Rule.ParamType.UNKNOWN))
+                               influence, parameter, Rule.ParamType.UNKNOWN,
+                               influence_bin_data=influence_bin_data))
             attributes[key]['rule'] = rule_str
         except Exception as e:
             if verbose:

@@ -9,8 +9,10 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime
 import logging
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 import uuid
+
+import pandas as pd
 from utilities import to_camel_case
 
 from data_provider.synthetic_data_generation.config.modules.pq_tuple_generator_config \
@@ -79,6 +81,48 @@ class SyntheticDataProvider(AbstractDataProvider):
 
         self.data_generator = SyntheticDataGenerator(config)
         self.generated_experiments = None
+    
+    def get_executed_experiments_data(
+        self,
+        rating_averaging: str | Callable = 'mean',
+        measurement_averaging: str | Callable = 'median',
+        include_oneoffs: str | bool = False,
+        printer: str | None = None,
+        experiment_series_id: str | None = None,
+        completed_only: bool = False,
+        labelable_only: bool = True,
+        containing_insights_only: bool = False,
+        material_type: str | None = None,
+        limit: int | None = None
+    ) -> tuple[pd.DataFrame, dict[str, set[str]], dict[str, set[Any]],
+               set[str], list[dei.ExperimentDict], dei.ExperimentSeries]:
+        df, lok, lov, boolean_parameters, experiments, experiment_series = super().get_executed_experiments_data(
+            rating_averaging=rating_averaging,
+            measurement_averaging=measurement_averaging,
+            include_oneoffs=include_oneoffs,
+            printer=printer,
+            experiment_series_id=experiment_series_id,
+            completed_only=completed_only,
+            labelable_only=labelable_only,
+            containing_insights_only=containing_insights_only,
+            material_type=material_type,
+            limit=limit
+        )
+        # By default only the changed parameters are included
+        # -> We want to include all parameters
+        lok['process_parameters'] = set(self.data_generator.pq_tuples.selected_parameters)
+        return df, lok, lov, boolean_parameters, experiments, experiment_series
+
+    def _parse_experiment(self, experiment, process_parameters,
+                          rating_aggregation_func, measure_aggregation_func):
+        # By default only the changed parameters are included
+        # -> We want to include all parameters
+        return super()._parse_experiment(
+            experiment=experiment,
+            process_parameters=set(self.data_generator.pq_tuples.selected_parameters),
+            rating_aggregation_func=rating_aggregation_func,
+            measure_aggregation_func=measure_aggregation_func
+        )      
 
     def _prepare_experiment_data(
             self, completed_only, containing_insights_only, experiment_series_id,
@@ -215,7 +259,7 @@ class SyntheticDataProvider(AbstractDataProvider):
                     user_value=str(experiment.parameters[parameter]),
                     key=parameter
                 )
-                for parameter in self.data_generator.pq_tuples.selected_parameters # TODO: Currently all parameters and not the changed ones only
+                for parameter in experiment.adjusted_parameters
             ]
         else:
             _changed_ui_parameters = []
@@ -226,14 +270,10 @@ class SyntheticDataProvider(AbstractDataProvider):
             last_rating_influences_dict: LRIDictType = {
                 to_camel_case(key): {
                     "value": value,
-                    "influential": False
+                    "influential": key in experiment.optimized_qualities
                 }
-                for key, value in experiment.to_dict().items()
+                for key, value in experiment.qualities.items()
             }
-
-            # from second experiment, set selected parameter as influential
-            for quality in experiment_series.optimized_qualities:
-                last_rating_influences_dict[to_camel_case(quality)]["influential"] = True
             last_rating_influences_dict['experiment_id'] = {
                 "value": experiment_series.experiments[experiment_index - 1].experiment_id,
                 "influential": False
@@ -267,7 +307,7 @@ class SyntheticDataProvider(AbstractDataProvider):
             stl_file_id=_stl_id,
             material=_material,
             oneoff=False,
-            all_parameters=experiment.to_dict(),  # TODO datatypes may get lost here!
+            all_parameters=experiment.parameters,
             insights=_insights,
             measurements=_measurements,
             completion=1.0,

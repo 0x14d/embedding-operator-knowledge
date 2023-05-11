@@ -126,7 +126,7 @@ class TrialExperimentSeriesGenerator(ExperimentSeriesGenerator):
                 new_parameters = last_experiment.parameters.copy()
                 new_parameters[parameter] = p_new
                 new_experiment = self._generate_experiment(
-                    new_parameters, last_experiment.qualities
+                    new_parameters, last_experiment.qualities, qualities, last_experiment
                 )
                 new_experiments.append(new_experiment)
 
@@ -175,6 +175,5 @@ class TrialExperimentSeriesGenerator(ExperimentSeriesGenerator):
 
         return GeneratedExperimentSeries(
             experiments=experiments,
-            generation_approach=self._config.type,
-            optimized_qualities=qualities
+            generation_approach=self._config.type
         )

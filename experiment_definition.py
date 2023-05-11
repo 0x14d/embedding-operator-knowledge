@@ -1,6 +1,6 @@
 from enum import Enum
 from functools import partial
-from typing import Union
+from typing import Union, List
 
 import numpy as np
 import pandas
@@ -12,6 +12,8 @@ import sklearn.pipeline
 import evaluation_visualization_utilities
 import rule_evaluation_utilities
 from rule_base import rule
+from rule_base.quantified_conclusions_rule import QuantifiedConclusionsRule
+from rule_base.quantified_conditions_rule import QuantifiedConditionsRule
 from rule_base.rule_extraction import RuleExtractionMethod
 from rule_base.rule_serializer import RuleSerializer
 from influences_visualisation import InfluenceVisualiser
@@ -207,6 +209,8 @@ class MetricIdentifier(ConfigBase):
 class AbstractionLevel(ConfigBase):
     HIGH = partial(rule.Rule.highlevel_eq)
     MID = partial(rule.Rule.midlevel_eq)
+    LOW_CONCLUSION = partial(rule.Rule.lowlevel_conclusion_eq)
+    LOW_CONDITION = partial(QuantifiedConditionsRule.lowlevel_condition_eq)
     LOW = partial(rule.Rule.lowlevel_eq)
 
 
@@ -217,6 +221,11 @@ class GroundTruthIdentifier(ConfigBase):
     V3_EXPERT_LABELLED = partial(rule_evaluation_utilities.load_expert_survey_baseline_rules,
                                  dirname='surveys/v3',
                                  version=RuleSerializer.Version.VERSION3)
+    SYNTHETIC_KCAP = partial(
+        rule_evaluation_utilities.load_synthetic_groundtruth_rules, rule_class=QuantifiedConclusionsRule)
+
+    SYNTHETIC_V3 = partial(
+        rule_evaluation_utilities.load_synthetic_groundtruth_rules, rule_class=QuantifiedConditionsRule)
 
 
 class VisualisationIdentifier(ConfigBase):
@@ -231,7 +240,8 @@ class VisualisationIdentifier(ConfigBase):
     RELATIVE_INFLUENCE_PARAMETER_RELATIVE) should display the change of parameter against the relative quality change
     'fname' --> <string> possible filename (currently only used in GRAPH)
     """
-    GRAPH_COMPARISON = partial(evaluation_visualization_utilities.visualize_graph_filtering)
+    GRAPH_COMPARISON = partial(
+        evaluation_visualization_utilities.visualize_graph_filtering)
     GRAPH = partial(InfluenceVisualiser.plot_graph)
     RELATION = partial(InfluenceVisualiser.plot_envfactor_parameter_pair)
     RELATIVE_INFLUENCE = partial(
@@ -242,15 +252,18 @@ class VisualisationIdentifier(ConfigBase):
         InfluenceVisualiser.plot_preceeding_experiment)
 
 
-WeightingMethod = Union[WeightingClustering, WeightDuringAggregation, WeightingInfluenceValidity, DoubleWeightingClustering]
+WeightingMethod = Union[WeightingClustering, WeightDuringAggregation,
+                        WeightingInfluenceValidity, DoubleWeightingClustering]
+
+
 class ExperimentDefinition:
-    def __init__(self, levels: list[AbstractionLevel],
-                 weight_methods: list[WeightingMethod],
-                 filter_methods: list[AdaptiveFilters], 
-                 metrics: list[MetricIdentifier],
-                 ground_truths: list[GroundTruthIdentifier],
-                 visualization_methods: list[VisualisationIdentifier],
-                 rule_extraction_methods: list[RuleExtractionMethod]):
+    def __init__(self, levels: List[AbstractionLevel],
+                 weight_methods: List[WeightingMethod],
+                 filter_methods: List[AdaptiveFilters],
+                 metrics: List[MetricIdentifier],
+                 ground_truths: List[GroundTruthIdentifier],
+                 visualization_methods: List[VisualisationIdentifier],
+                 rule_extraction_methods: List[RuleExtractionMethod]):
         self.abstraction_level = levels
         self.weight_methods = weight_methods
         self.filter_methods = filter_methods

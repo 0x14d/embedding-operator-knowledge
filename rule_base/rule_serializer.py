@@ -1,7 +1,6 @@
 from __future__ import annotations
 import datetime
 import logging
-import sys
 from collections import defaultdict
 from collections.abc import Iterable
 from enum import Enum
@@ -13,9 +12,9 @@ import pandas as pd
 from pandas import ExcelWriter
 
 from preprocessing import LabelEncoderForColumns
+from rule_base.quantified_conditions_rule import QuantifiedConditionsRule
+from rule_base.quantified_conclusions_rule import QuantifiedConclusionsRule
 from .rule import Rule
-import parse
-from distutils import util
 
 from utilities import Path
 
@@ -30,7 +29,6 @@ class RuleSerializer:
     EXCEL_METADATA_SHEET_NAME = "Metadata"
 
     class Format(Enum):
-        CSV = 1,
         EXCEL = 2,
         STRING = 3,
 
@@ -66,22 +64,12 @@ class RuleSerializer:
 
     def _get_serializer(self, output_format: RuleSerializer.Format):
         """ select serialization method based on output format """
-        if output_format == RuleSerializer.Format.CSV:
-            return self._serialize_to_csv
-        elif output_format == RuleSerializer.Format.EXCEL:
+        if output_format == RuleSerializer.Format.EXCEL:
             return self._serialize_to_excel
         elif output_format == RuleSerializer.Format.STRING:
             return self._serialize_to_string
         else:
             raise ValueError(output_format)
-
-    @staticmethod
-    def _serialize_to_csv(rules: Iterable[Rule],
-                          version: RuleSerializer.Version,
-                          path: Path | None,
-                          **kwargs):
-        """ serialize to V1 CIKM output format"""
-        raise NotImplementedError("use EXCEL instead.")
 
     @staticmethod
     def _serialize_to_excel(rules: Iterable[Rule],
@@ -125,59 +113,18 @@ class RuleSerializer:
             metadata.to_excel(writer, sheet_name=RuleSerializer.EXCEL_METADATA_SHEET_NAME)
 
     @staticmethod
-    def _rule_to_str_v3(rule: Rule) -> str:
-        string = ""
-        if math.isnan(rule.step_size) and math.isnan(rule.range_start) and math.isnan(rule.range_end):
-            string = ""
-        elif abs(rule.step_size) > 0:
-            string = f' by {abs(rule.step_size):.2f}'
-        elif rule.action_quantifier is not None:
-            if rule.parameter_type == Rule.ParamType.STRING:
-                try:
-                    string = f' to {rule.label_encoder.inverse_transform(rule.action_quantifier, rule.parameter)}'
-                except IndexError as e:
-                    logging.exception(f"index error at rule {repr(rule)},  w/ label encoder {rule.label_encoder} and action quantifier {rule.action_quantifier}, parameter {rule.parameter} of type {rule.parameter_type}")
+    def _rule_to_str_v3(rule: QuantifiedConditionsRule) -> str:
+        return str(rule)
 
-            else:
-                string = f' to {rule.action_quantifier}'
-        else:
-            if math.isclose(rule.range_start, rule.range_end):
-                string = f' to {rule.range_start:.2f}'
-            else:
-                string = f' in range {rule.range_start:.2f} to {rule.range_end:.2f}'
-        additional_string = string
-
-        return f"If you encounter {rule.condition} in [{rule.condition_range[0]:.2f}, {rule.condition_range[1]:.2f}], try to {str(rule.action)} the " \
-               f"parameter {rule.parameter}" + additional_string
-    
     # these are the backcompat functions
     @staticmethod
     def _rule_to_str_cikm(rule: Rule) -> str:
         raise NotImplementedError("deprecated. use KCAP or Version3.")
 
     @staticmethod
-    def _rule_to_str_kcap(rule: Rule) -> str:
-        additional_string = ""
-        if math.isnan(rule.step_size) and math.isnan(rule.range_start) and math.isnan(rule.range_end):
-            additional_string = ""
-        elif abs(rule.step_size) > 0:
-            additional_string = f' by {round(abs(rule.step_size), 2)}'
-            # TODO XAI-607 enable after allowing mutliple conditions to get more meaningful ranges
-            # if rule.range_start != rule.range_end:
-            # additional_string = f' by {round(abs(rule.step_size), 2)} in range {round(rule.range_start, 2)} to {round(rule.range_end, 2)}'
-        elif rule.action_quantifier is not None:
-            if rule.parameter_type == Rule.ParamType.STRING:
-                additional_string = f' to {rule.label_encoder.inverse_transform(rule.action_quantifier, rule.parameter)}'
-            else:
-                additional_string = f' to {rule.action_quantifier}'
-        elif rule.range_start != rule.range_end:
-            additional_string = f' in range {round(rule.range_start, 2)} to {round(rule.range_end, 2)}'
-        elif rule.range_start == rule.range_end:
-            additional_string = f' to {round(rule.range_start, 2)}'
+    def _rule_to_str_kcap(rule: QuantifiedConclusionsRule) -> str:
+        return str(rule)
 
-        return f"If you encounter {rule.condition}, try to {str(rule.action)} the " \
-            f"parameter {rule.parameter}" + additional_string
-    
     # aliases
     _rule_to_str_quantified_influences = _rule_to_str_v3
     _rule_to_str_unquantified_influences = _rule_to_str_kcap
@@ -209,72 +156,27 @@ class RuleSerializer:
     # --- Deserialization ---
 
     @staticmethod
-    def _rule_from_str_v3(string: str, label_encoder: LabelEncoderForColumns) -> Rule:
+    def _rule_from_str_v3(
+        string: str,
+        label_encoder: LabelEncoderForColumns
+    ) -> QuantifiedConditionsRule:
         # this is the current version, so just return from_string()
-        return Rule.from_string(string, label_encoder)
+        return QuantifiedConditionsRule.from_string(string, label_encoder)
 
     # these are the backcompat functions
     @staticmethod
-    def _rule_from_str_cikm(string: str, label_encoder: LabelEncoderForColumns) -> Rule:
+    def _rule_from_str_cikm(
+        string: str,
+        label_encoder: LabelEncoderForColumns
+    ) -> Rule:
         raise NotImplementedError("deprecated. use KCAP or Version3.")
 
     @staticmethod
-    def _rule_from_str_kcap(string: str, label_encoder: LabelEncoderForColumns) -> Rule:
-        rule = Rule(label_encoder)
-        result = parse.parse("If you encounter {}, try to {} the parameter {} by {}", string)
-        categorical_rule = False
-        range_rule = False
-        if result is None:
-            range_rule = True
-            result = parse.parse("If you encounter {}, try to {} the parameter {} in range {} to {}", string)
-            if result is None:
-                categorical_rule = True
-                range_rule = False
-                parsed_condition, parsed_action, parsed_parameter, parsed_step = parse.parse("If you encounter {}, try to {} the parameter {} to {}", string)
-
-            else:
-                parsed_condition, parsed_action, parsed_parameter, parsed_range_start, parsed_range_end = result
-                parsed_step = None
-        else:
-            parsed_condition, parsed_action, parsed_parameter, parsed_step = result
-        try:
-            rule.condition = parsed_condition
-            try:
-                rule.action = Rule.Action.from_string(parsed_action)
-            except KeyError as e:
-                raise KeyError(
-                    'parsing failed - not a validly formatted rule: ' + str(e))
-            rule.parameter = parsed_parameter
-            if range_rule is False:
-                if categorical_rule is True:
-                    try:
-                        # check whether it's a pseudo categorical rule (happens if there is no intervall but all values are the same)
-                        param_value = float(parsed_step)
-                        rule.parameter_type = Rule.ParamType.NUMERICAL
-                        rule.range_start = param_value
-                        rule.range_end = param_value
-                    except ValueError:
-                        try:
-                            #check if its a bool or string
-                            rule.action_quantifier = float(util.strtobool(parsed_step))
-                            rule.parameter_type = Rule.ParamType.BOOLEAN
-                        except ValueError:
-                            rule.action_quantifier = label_encoder.transform(parsed_step, rule.parameter)
-                            rule.parameter_type = Rule.ParamType.STRING
-                else:
-                    rule.parameter_type = Rule.ParamType.NUMERICAL
-                    if rule.action == Rule.Action.DECREASE_INCREMENTALLY:
-                        rule.step_size = -1 * float(parsed_step)
-                    else:
-                        rule.step_size = float(parsed_step)
-            else:
-                rule.parameter_type = Rule.ParamType.NUMERICAL
-                rule.range_start = float(parsed_range_start)
-                rule.range_end = float(parsed_range_end)
-
-        except Exception as e:
-            raise ValueError(f'not a valid rule: {string} - {e}')
-        return rule
+    def _rule_from_str_kcap(
+        string: str,
+        label_encoder: LabelEncoderForColumns
+    ) -> QuantifiedConclusionsRule:
+        return QuantifiedConclusionsRule.from_string(string, label_encoder)
 
     # aliases
     _rule_from_str_quantified_influences = _rule_from_str_v3
@@ -305,71 +207,12 @@ class RuleSerializer:
         return deserializer(label_encoder, _version, path, **kwargs)
 
     def _get_deserializer(self, input_format: RuleSerializer.Format) -> Callable[..., dict[str, list[Rule]] | list[Rule]]:
-        if input_format == RuleSerializer.Format.CSV:
-            return self._deserialize_from_csv
-        elif input_format == RuleSerializer.Format.EXCEL:
+        if input_format == RuleSerializer.Format.EXCEL:
             return self._deserialize_from_excel
         elif input_format == RuleSerializer.Format.STRING:
             return self._deserialize_from_string
         else:
             raise ValueError(input_format)
-
-    @staticmethod
-    def _deserialize_from_csv(label_encoder: LabelEncoderForColumns,
-                              version: RuleSerializer.Version,
-                              path: Path,
-                              **kwargs) -> list[Rule]:
-        filter_categorical = kwargs.get("filter_categorical", False)
-        data = pd.read_csv(path, delimiter=';', keep_default_na=False, true_values=['TRUE', 'true', 'True'],
-                           false_values=['FALSE', 'False', 'false'])
-        list_of_all_rules = []
-        for index, row in data.iterrows():
-            new_rule = Rule(label_encoder)
-            new_rule.condition = row['cura_condition']
-            if row['action'] == "":
-                continue
-            new_rule.action = Rule.Action.from_string(row['action'])
-            new_rule.parameter = row['parameter_cura']
-            if new_rule.parameter == "":
-                continue  # if we do not have an accurate translation for our cura parameter we cannot compare to our kg
-            if not row['action_quantifier'] == "":
-                if row['categorical'] == 'true':
-                    try:
-                        # check if its a bool or string
-                        new_rule.action_quantifier = float(util.strtobool(row['action_quantifier']))
-                        new_rule.parameter_type = Rule.ParamType.BOOLEAN
-                    except ValueError:
-                        new_rule.action_quantifier = label_encoder.inverse_transform(row['action_quantifier'],
-                                                                                     new_rule.parameter)
-                        new_rule.parameter_type = Rule.ParamType.STRING
-                else:
-                    new_rule.parameter_type = Rule.ParamType.NUMERICAL
-                    new_rule.action_quantifier = row['action_quantifier']
-            if not row['range'] == "":
-                csv_range = row['range']  # currently it's a string here
-                if '[' in row['range']:
-                    # extract range
-                    csv_range = csv_range.replace('[', '')
-                    csv_range = csv_range.replace(']', '')
-                    start, end = csv_range.split(';')
-                    new_rule.range_start, new_rule.range_end = float(start), float(end)
-                elif '<' in csv_range or '>' in csv_range:
-                    # if no range but </> is defined just take the max/min float value as other limit
-                    if '<' in csv_range:
-                        new_rule.range_start = sys.float_info.min
-                        new_rule.range_end = float(csv_range.replace('<', ''))
-                    else:
-                        new_rule.range_end = sys.float_info.max
-                        new_rule.range_start = float(csv_range.replace('>', ''))
-            if not row['step_size Cura'] == "":
-                new_rule.step_size = float(row['step_size Cura'])
-
-            if filter_categorical is True:
-                if not row['categorical'] == 'true':
-                    list_of_all_rules.append(new_rule)
-            else:
-                list_of_all_rules.append(new_rule)
-        return list_of_all_rules
 
     @staticmethod
     def _deserialize_from_excel(label_encoder: LabelEncoderForColumns,

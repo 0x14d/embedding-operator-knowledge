@@ -20,7 +20,6 @@ from data_provider import abstract_data_provider
 from preprocessing import Preprocessing, LabelEncoderForColumns
 
 
-
 def __add_vertices_for_type(graph, list_of_vertices_dicts, type_of_vertex=None):
     """
     Adds len(dict_of_attributes) vertices to the graph
@@ -101,10 +100,12 @@ def parse_insights_to_graph(experiment, label_encoder: LabelEncoderForColumns, i
     for influence in influences:
         environment_influences.update(influence)
     if influential_only:
-        influential = dict(filter(lambda elem: elem[1]['influential'] is True, environment_influences.items()))
+        influential = dict(filter(
+            lambda elem: elem[1]['influential'] is True, environment_influences.items()))
     else:
         influential = environment_influences
-    flat_influential = list(map(__influences_to_flat_array, influential.items()))
+    flat_influential = list(
+        map(__influences_to_flat_array, influential.items()))
     __add_vertices_for_type(g, flat_influential, 'env_influence')
 
     flat_prev_qual = []
@@ -116,21 +117,24 @@ def parse_insights_to_graph(experiment, label_encoder: LabelEncoderForColumns, i
             prev_qual = insights['last_rating_influences']
             prev_qual_per_exp = prev_qual[
                 0]  # currently set to 0 since we only have the possibility to select 1 previous experiment
-            additional_arguments = {'rated_id': prev_qual_per_exp['experiment_id']}
+            additional_arguments = {
+                'rated_id': prev_qual_per_exp['experiment_id']}
             influenced_by = prev_qual_per_exp['experiment_id']
             del prev_qual_per_exp['experiment_id']
             del prev_qual_per_exp['comment']
             prev_qual_per_exp = {key: value for (key, value) in prev_qual_per_exp.items()
                                  if type(key) != int and value['value'] != 0 and value['value'] != False}
             if influential_only:
-                influential_qual = dict(filter(lambda elem: elem[1]['influential'] is True, prev_qual_per_exp.items()))
+                influential_qual = dict(
+                    filter(lambda elem: elem[1]['influential'] is True, prev_qual_per_exp.items()))
             else:
                 influential_qual = prev_qual_per_exp
             flat_prev_qual = list(
                 map(lambda x: __influences_to_flat_array(x, **additional_arguments), influential_qual.items()))
             __add_vertices_for_type(g, flat_prev_qual, 'qual_influence')
 
-    influences_keys = list(map(lambda x: x['key'], flat_prev_qual + flat_influential))
+    influences_keys = list(
+        map(lambda x: x['key'], flat_prev_qual + flat_influential))
     parameters_keys = list(map(lambda x: x['key'], parameters))
     # TODO: even if experiments with insights are considered here, they might have no influences specified. Consequently, there
     #  will be no edges in the graph and as we are weighting the edges the graph will have no weight => XAI-574
@@ -160,8 +164,10 @@ def parse_insights_to_graph(experiment, label_encoder: LabelEncoderForColumns, i
     # keep track of which edge was created by which experiment
     g.es['experiment'] = experiment['_id']
     g['experiment_id'] = experiment['_id']
-    g['environment'] = abstract_data_provider.AbstractDataProvider.aggregate(experiment['measurements'], 'median')
-    g['quality'] = abstract_data_provider.AbstractDataProvider.aggregate(experiment['ratings'], 'mean')
+    g['environment'] = abstract_data_provider.AbstractDataProvider.aggregate(
+        experiment['measurements'], 'median')
+    g['quality'] = abstract_data_provider.AbstractDataProvider.aggregate(
+        experiment['ratings'], 'mean')
     import pandas
     g['quality_aggregated'] = Preprocessing.transform_rating_linear(pandas.DataFrame.from_dict(
         {setting_name: [setting_value] for setting_name, setting_value in g['quality'].items()}))['rating'].iloc[0]
@@ -200,26 +206,33 @@ def weight_graphs(graphs, weighting_function,
     new_graphs = [copy.deepcopy(graph) for graph in graphs]
     list_of_all_weights = list()
     # TODO check if the quality improvement relates to the previous experiment
-    knowledge_graph = aggregate_unfiltered(new_graphs)  # aggregate the current graph
+    knowledge_graph = aggregate_unfiltered(
+        new_graphs)  # aggregate the current graph
     es_ps = extract_e_p_values(knowledge_graph, experiment_series)
-    aggregated_improvement = dict()  # dict that contains for every experiment id the improvement of all ratings
-    influence_considered = dict()  # dict that contains every rating for each exp_id that has already been detected
+    # dict that contains for every experiment id the improvement of all ratings
+    aggregated_improvement = dict()
+    # dict that contains every rating for each exp_id that has already been detected
+    influence_considered = dict()
     for e_p in es_ps:
         df = es_ps[e_p]
         parameter, influence = e_p.split('-')
         try:
             # TODO excessively complicated and could cause errors when run with environmental influences -> get quality_realtive df and sum each rows
-            df[f'relative_{influence}'] = -1 * (df[influence] - df['influence_value'])  # calculate the improvement
+            # calculate the improvement
+            df[f'relative_{influence}'] = -1 * \
+                (df[influence] - df['influence_value'])
             for index, row in df.iterrows():
                 exp_id = row['exp_id']
                 if exp_id in influence_considered:
-                    if influence in influence_considered[exp_id]:  # if influence already considered continue with
+                    # if influence already considered continue with
+                    if influence in influence_considered[exp_id]:
                         # next e_p pair
                         continue
                 else:
                     influence_considered[exp_id] = list()
 
-                influence_considered[exp_id].append(influence)  # add the considered influence to the dictionary
+                # add the considered influence to the dictionary
+                influence_considered[exp_id].append(influence)
                 # consider the improvement to the last experiment for the current exp_id
                 if exp_id in aggregated_improvement.keys():
                     aggregated_improvement[exp_id] += row[f'relative_{influence}']
@@ -236,7 +249,8 @@ def weight_graphs(graphs, weighting_function,
         edges = get_edges(graph)
         # as the graphs are pre-weighted with confidence the value stays the same or will be deleted
         if len(graph.es["weight"]) > 0:
-            confidence = graph.es["weight"][0]  # remember the original value for weight
+            # remember the original value for weight
+            confidence = graph.es["weight"][0]
         else:
             confidence = 0.5  # default value if there is no weight for this graph
             weight = confidence
@@ -244,12 +258,15 @@ def weight_graphs(graphs, weighting_function,
         for edge in edges:
             key = json.dumps(edge)
             frequency = edges_dict[key] / len(edges_dict.items())
-            exp_id = graph['experiment_id']  # get the experiment id of the current graph
+            # get the experiment id of the current graph
+            exp_id = graph['experiment_id']
             if exp_id in aggregated_improvement.keys():
-                quality_improvement = aggregated_improvement[exp_id]  # get the improvement of the current experiment
+                # get the improvement of the current experiment
+                quality_improvement = aggregated_improvement[exp_id]
             else:
                 quality_improvement = math.nan
-            weights.append(weighting_function(confidence, frequency, quality_improvement))
+            weights.append(weighting_function(
+                confidence, frequency, quality_improvement))
         if len(weights) == 0:
             weights = [weight for _ in range(len(graph.es))]
         graph.es["weight"] = weights
@@ -346,7 +363,8 @@ def filter_aggregated_graph(graph, threshold_function):
     assert not filtered_graph.es
     for relation in relations:
         if relation['weight'] >= threshold:
-            filtered_graph.add_edge(relation.source, relation.target, **relation.attributes())
+            filtered_graph.add_edge(
+                relation.source, relation.target, **relation.attributes())
     filtered_count_rels = len(filtered_graph.es)
     logging.info(f'removed {count_rels - filtered_count_rels} relations')
     return filtered_graph
@@ -364,7 +382,8 @@ def _format_attributes(attributes, experiment_id):
     :return:
     """
     if attributes['type'] == 'qual_influence' or attributes['type'] == 'env_influence':
-        attributes['value'] = __format_exp_to_dict_item(attributes['value'], experiment_id)
+        attributes['value'] = __format_exp_to_dict_item(
+            attributes['value'], experiment_id)
     elif attributes['type'] == 'parameter':
         attributes['user_value'] = __format_exp_to_dict_item(
             attributes['user_value'], experiment_id)
@@ -388,7 +407,8 @@ def _merge_attributes(prev_attributes, new_attributes):
         if isinstance(value, dict) and isinstance(prev_attributes[key],
                                                   dict):
             # merge the two dictionaries
-            merged_attributes[key] = {**prev_attributes[key], **new_attributes[key]}
+            merged_attributes[key] = {
+                **prev_attributes[key], **new_attributes[key]}
     return merged_attributes
 
 
@@ -428,23 +448,35 @@ def aggregate_unfiltered(graphs: Iterable[igraph.Graph], all_influences=False):
                 new_source = old_to_new_vertex_index[edge.source]
                 if edge.source_vertex['key'] != knowledge_graph.vs[new_source]['key'] or \
                         edge.target_vertex['key'] != knowledge_graph.vs[new_target]['key']:
-                    raise Exception("source or target mapping is not consistent")
-                try:
-                    edge_id = knowledge_graph.get_eid(new_source, new_target)
-                    knowledge_graph.es[edge_id]['weight'] += edge['weight']
-                    knowledge_graph.es[edge_id]['experiments'].append(edge['experiment'])
-                except Exception as e:
+                    raise Exception(
+                        "source or target mapping is not consistent")
+                
+                edge_id = knowledge_graph.get_eid(
+                    new_source, new_target, error=False)
+                if edge_id == -1:
                     # edge doesn't exist -> create it
                     new_edge = knowledge_graph.add_edge(new_source, new_target)
                     new_edge['weight'] = edge['weight']
                     new_edge['experiments'] = [edge['experiment']]
-        knowledge_graph['quality'].update({graph['experiment_id']: graph['quality']})
-        knowledge_graph['quality_aggregated'].update({graph['experiment_id']: graph['quality_aggregated']})
-        knowledge_graph['environment_influences_lookup'].update({graph['experiment_id']: graph['environment_influences']})
-        knowledge_graph['quality_influences_lookup'].update({graph['experiment_id']: graph['quality_influences']})
-        knowledge_graph['all_parameters_lookup'].update({graph['experiment_id']: graph['all_parameters']})
-        knowledge_graph['environment_lookup'].update({graph['experiment_id']: graph['environment']})
-        knowledge_graph['influenced_by_lookup'].update({graph['experiment_id']: graph['influenced_by']})
+                else:
+                    knowledge_graph.es[edge_id]['weight'] += edge['weight']
+                    knowledge_graph.es[edge_id]['experiments'].append(
+                        edge['experiment'])
+
+        knowledge_graph['quality'].update(
+            {graph['experiment_id']: graph['quality']})
+        knowledge_graph['quality_aggregated'].update(
+            {graph['experiment_id']: graph['quality_aggregated']})
+        knowledge_graph['environment_influences_lookup'].update(
+            {graph['experiment_id']: graph['environment_influences']})
+        knowledge_graph['quality_influences_lookup'].update(
+            {graph['experiment_id']: graph['quality_influences']})
+        knowledge_graph['all_parameters_lookup'].update(
+            {graph['experiment_id']: graph['all_parameters']})
+        knowledge_graph['environment_lookup'].update(
+            {graph['experiment_id']: graph['environment']})
+        knowledge_graph['influenced_by_lookup'].update(
+            {graph['experiment_id']: graph['influenced_by']})
     if all_influences:
         parameters = knowledge_graph.vs.select(type='parameter')
         import igraph
@@ -462,7 +494,8 @@ def aggregate_unfiltered(graphs: Iterable[igraph.Graph], all_influences=False):
         knowledge_graph.add_edges(edges)
     if not all_influences:
         # normalize weights by amounts of subgraphs #TODO probably problematic if there are only a few subgraphs with high confidence for certain areas
-        knowledge_graph.es['weight'] = list(map(lambda x: x / len(graphs), knowledge_graph.es['weight']))
+        knowledge_graph.es['weight'] = list(
+            map(lambda x: x / len(graphs), knowledge_graph.es['weight']))
     return knowledge_graph
 
 
@@ -489,7 +522,8 @@ def _get_value(vertex, experiment_id, verbose=False):
             return None, None
         except ValueError as e:
             if verbose:
-                logging.warning("non floatable value " + vertex['user_value'][experiment_id] + ' encountered. ' + e)
+                logging.warning(
+                    "non floatable value " + vertex['user_value'][experiment_id] + ' encountered. ' + e)
             return vertex['user_value'][experiment_id], vertex['original_value'][experiment_id]
     else:
         raise Exception('Type unknown: ' + vertex['type'])
@@ -519,7 +553,8 @@ def prepare_data_for_filtering_calculations(graph, experiment_series, fill_nones
     e_ps = defaultdict(dict)
     # prepare a dict mapping experiment series ids to a dict of their experiments with respective ratings - required to filter for best only
     # all parameters contained in the graph as vertices containing user_value dictionary in format exp_id: value
-    parameters = [vertex for vertex in graph.vs if vertex['type'] == 'parameter']
+    parameters = [
+        vertex for vertex in graph.vs if vertex['type'] == 'parameter']
     influences = [vertex for vertex in graph.vs if
                   vertex['type'] == 'env_influence' or vertex['type'] == 'qual_influence']
 
@@ -536,7 +571,8 @@ def prepare_data_for_filtering_calculations(graph, experiment_series, fill_nones
             exp_dict = {}
             if include_changed_parameters:
                 for parameter in parameters:
-                    param_value_user, param_value_original = _get_value(parameter, exp_id)
+                    param_value_user, param_value_original = _get_value(
+                        parameter, exp_id)
                     if fill_nones:
                         param_value_user = _fill_nones_param(exp_id, graph, para_n_inf_per_series, param_value_user,
                                                              parameter, series_id)
@@ -551,15 +587,16 @@ def prepare_data_for_filtering_calculations(graph, experiment_series, fill_nones
                         influence_value = _fill_nones_influence(exp_id, graph, influence, influence_value,
                                                                 para_n_inf_per_series, series_id)
                     if influence_value is not None:
-                        exp_dict.update({influence['key'] + '_influence': influence_value})
+                        exp_dict.update(
+                            {influence['key'] + '_influence': influence_value})
                         if influence['type'] == 'qual_influence':
                             # check if the key is present in the quality rating of the previous experiment
                             if influence['key'] in graph['quality'][exp_id]:
                                 exp_dict.update({influence['key'] + '_relative': -1 * (
-                                        graph['quality'][exp_id][influence['key']] - influence_value)})
+                                    graph['quality'][exp_id][influence['key']] - influence_value)})
                             else:
                                 raise ValueError(influence[
-                                                     'key'] + ' of experiment ' + exp_id + ' not present in quality characteristics of referenced experiment')
+                                    'key'] + ' of experiment ' + exp_id + ' not present in quality characteristics of referenced experiment')
             x_dicts.append(exp_dict)
     x = pandas.DataFrame.from_records(x_dicts, index=index)
     y = pandas.DataFrame.from_records(y_dicts, index=index)
@@ -577,11 +614,13 @@ def prepare_dfs_of_experiments(graph: igraph.Graph, experiment_series, fill_none
     :param compute_changed_parameters_relative_to_defaults: calculates the changed parameters to the default parametrization. Otherwise they are calculated to the preceeding experiment resulting in a much sparser but more expressive df (influences etc are also calculated in regards to the preceeding exp)
     :return:
     """
-    exp_to_preceeding_exp = __calculate_preceeding_experiments_lookup(experiment_series, graph)
+    exp_to_preceeding_exp = __calculate_preceeding_experiments_lookup(
+        experiment_series, graph)
 
     # prepare a dict mapping experiment series ids to a dict of their experiments with respective ratings - required to filter for best only
     # all parameters contained in the graph as vertices containing user_value dictionary in format exp_id: value
-    parameters = [vertex for vertex in graph.vs if vertex['type'] == 'parameter']
+    parameters = [
+        vertex for vertex in graph.vs if vertex['type'] == 'parameter']
     influences = [vertex for vertex in graph.vs if
                   vertex['type'] == 'env_influence' or vertex['type'] == 'qual_influence']
 
@@ -603,6 +642,8 @@ def prepare_dfs_of_experiments(graph: igraph.Graph, experiment_series, fill_none
                       'influences_relative': influences_relative}
     for series_id, exp_ids in experiment_series.items():
         for exp_id in exp_ids:
+            if exp_id not in graph['quality']:
+                continue
             # set up indices
             for key in datacollection.keys():
                 index[key].append(exp_id)
@@ -626,11 +667,13 @@ def prepare_dfs_of_experiments(graph: igraph.Graph, experiment_series, fill_none
                                             graph['quality'][exp_to_preceeding_exp[exp_id]][quality_attribute])
                 except KeyError:
                     relative_rating = None
-                exp_quality_relative.update({quality_attribute: relative_rating})
+                exp_quality_relative.update(
+                    {quality_attribute: relative_rating})
 
             # changed parameters
             for parameter in parameters:
-                param_value_user, param_value_original = _get_value(parameter, exp_id)
+                param_value_user, param_value_original = _get_value(
+                    parameter, exp_id)
                 if fill_nones:
                     param_value_user = _fill_nones_param(exp_id, graph, para_n_inf_per_series, param_value_user,
                                                          parameter, series_id)
@@ -643,7 +686,8 @@ def prepare_dfs_of_experiments(graph: igraph.Graph, experiment_series, fill_none
                 if compute_changed_parameters_relative_to_defaults:
                     # calculate changed params relative based on default values
                     if param_value_user is not None and param_value_original is not None:
-                        exp_changed_parameters.update({parameter['key']: param_value_user})
+                        exp_changed_parameters.update(
+                            {parameter['key']: param_value_user})
                         if param_value_original is not None:
                             exp_changed_parameters_relative.update(
                                 {parameter['key']: param_value_user - param_value_original})
@@ -658,7 +702,8 @@ def prepare_dfs_of_experiments(graph: igraph.Graph, experiment_series, fill_none
                         if isinstance(previous_value, bool):
                             # if previous value is bool uservalue also has to be bool
                             if isinstance(param_value_user, str):
-                                user_value = bool(util.strtobool(param_value_user))
+                                user_value = bool(
+                                    util.strtobool(param_value_user))
                             else:
                                 user_value = bool(param_value_user)
                             # calculate change of bool parameter - the behaviour is ok since we currently only focus on non-relative values during rule creation (refer to relation_to_rule)
@@ -679,7 +724,6 @@ def prepare_dfs_of_experiments(graph: igraph.Graph, experiment_series, fill_none
                             exp_changed_parameters_relative.update(
                                 {parameter['key']: param_value_user - previous_value})
 
-
             # influences:
             for influence in influences:
                 influence_value, _ = _get_value(influence, exp_id)
@@ -693,31 +737,34 @@ def prepare_dfs_of_experiments(graph: igraph.Graph, experiment_series, fill_none
                         # TODO decide whether this is nonsense or not - the information is duplicated by quality_relative but it highlights the influences...
                         if influence['key'] in graph['quality'][exp_id]:
                             exp_influences_relative.update({influence['key']: -1 * (
-                                    graph['quality'][exp_id][influence['key']] - influence_value)})
+                                graph['quality'][exp_id][influence['key']] - influence_value)})
                         else:
                             raise ValueError(influence[
-                                                 'key'] + ' of experiment ' + exp_id + ' not present in quality characteristics of referenced experiment')
+                                'key'] + ' of experiment ' + exp_id + ' not present in quality characteristics of referenced experiment')
             for data_key, collection in datacollection.items():
                 collection.append(exp_datacollection[data_key])
     dfs = defaultdict(pandas.DataFrame)
     for key, data in datacollection.items():
         # convert to dataframe and replace Nones with NaNs
-        dfs[key] = pandas.DataFrame.from_records(data, index=index[key]).fillna(value=np.nan)
+        dfs[key] = pandas.DataFrame.from_records(
+            data, index=index[key]).fillna(value=np.nan)
     return dfs
 
 
 def __calculate_preceeding_experiments_lookup(experiment_series, graph):
     # determine the preceeding experiment in a series to allow relative quality calculations
-    experiment_to_experiment_series = {exp: exp_ser for exp_ser, exps in experiment_series.items() for exp in exps}
+    experiment_to_experiment_series = {
+        exp: exp_ser for exp_ser, exps in experiment_series.items() for exp in exps}
     exp_to_preceeding_exp = defaultdict(int)
     for exp, series in experiment_to_experiment_series.items():
         # first we have a look if the experiment in question has a link to a preceeding experiment contained in the influences
-        preceeding_exp = graph['influenced_by_lookup'][exp]
+        preceeding_exp = graph['influenced_by_lookup'].get(exp, None)
         if preceeding_exp is not None:
             exp_to_preceeding_exp.update({exp: int(preceeding_exp)})
         else:
             # if that is not the case we try to determine it based on ids in the experiment series
-            experiments = np.sort(experiment_series[series])  # just to be on the safe side..
+            # just to be on the safe side..
+            experiments = np.sort(experiment_series[series])
             experiments = list(experiments)
             index_of_exp = experiments.index(exp)
             if (index_of_exp > 0):
@@ -749,7 +796,8 @@ def fill_nans_of_clustering_df(graph, df, type, active_fill=False):
                     nanvalue = np.isnan(value)
                     if active_fill and np.isnan(value):
                         try:
-                            value = float(graph['all_parameters_lookup'][experiment][parameter])
+                            value = float(
+                                graph['all_parameters_lookup'][experiment][parameter])
                             filled_df[parameter][experiment] = value
                         except KeyError:
                             continue
@@ -781,7 +829,8 @@ def fill_nans_of_clustering_df(graph, df, type, active_fill=False):
                 for experiment, value in env_facor_series.items():
                     if active_fill and np.isnan(value):
                         try:
-                            value = float(graph['environment_lookup'][experiment][env_factor])
+                            value = float(
+                                graph['environment_lookup'][experiment][env_factor])
                             filled_df[env_factor][experiment] = value
                         except KeyError:
                             continue
@@ -817,7 +866,8 @@ def extract_e_p_values(graph, experiment_series, best_only=False, fill_nones=Fal
         experiment_serie, experiment_ids in experiment_series.items()}
 
     # all parameters contained in the graph as vertices containing user_value dictionary in format exp_id: value
-    parameters = [vertex for vertex in graph.vs if vertex['type'] == 'parameter']
+    parameters = [
+        vertex for vertex in graph.vs if vertex['type'] == 'parameter']
     influences_for_parameters = {parameter.index: [edge.source_vertex for edge in parameter.in_edges()] for parameter in
                                  parameters}
 
@@ -833,7 +883,8 @@ def extract_e_p_values(graph, experiment_series, best_only=False, fill_nones=Fal
         for series_id, exp_id in expid_with_min_rating_for_series.items():
             for parameter in parameters:
                 for influence in influences_for_parameters[parameter.index]:
-                    param_value_user, param_value_original = _get_value(parameter, exp_id)
+                    param_value_user, param_value_original = _get_value(
+                        parameter, exp_id)
                     influence_value, _ = _get_value(influence, exp_id)
                     if fill_nones:
                         influence_value = _fill_nones_influence(exp_id, graph, influence, influence_value,
@@ -846,15 +897,18 @@ def extract_e_p_values(graph, experiment_series, best_only=False, fill_nones=Fal
                                 'param_value_original': param_value_original,
                                 'influence_value': influence_value,
                                 'quality_aggregated': graph['quality_aggregated'][exp_id]}
-                    quality_dict = {k: v for k, v in graph["quality"][exp_id].items()}
+                    quality_dict = {k: v for k,
+                                    v in graph["quality"][exp_id].items()}
                     exp_dict.update(quality_dict)
-                    es_ps_data[parameter['name'] + '-' + influence['name']].append(exp_dict)
+                    es_ps_data[parameter['name'] + '-' +
+                               influence['name']].append(exp_dict)
     else:
         for series_id, exp_ids in experiment_series.items():
             for exp_id in exp_ids:
                 for parameter in parameters:
                     for influence in influences_for_parameters[parameter.index]:
-                        param_value_user, param_value_original = _get_value(parameter, exp_id)
+                        param_value_user, param_value_original = _get_value(
+                            parameter, exp_id)
                         influence_value, _ = _get_value(influence, exp_id)
                         # revert to all recorded influences/parameters to fill nones
                         if fill_nones:
@@ -875,11 +929,14 @@ def extract_e_p_values(graph, experiment_series, best_only=False, fill_nones=Fal
                                         'param_value_original': param_value_original,
                                         'influence_value': influence_value,
                                         'quality_aggregated': graph['quality_aggregated'][exp_id]}
-                        quality_dict = {k: v for k, v in graph["quality"][exp_id].items()}
+                        quality_dict = {k: v for k,
+                                        v in graph["quality"][exp_id].items()}
                         exp_dict.update(quality_dict)
-                        es_ps_data[parameter['name'] + '-' + influence['name']].append(exp_dict)
+                        es_ps_data[parameter['name'] + '-' +
+                                   influence['name']].append(exp_dict)
     # TODO check if we're discarding too much. Maybe it's better to delete columns altough exp series should always be created with the same cura version and therefore not exhibit nones
-    es_ps_df = {e_p: pandas.DataFrame(data).dropna() for e_p, data in es_ps_data.items()}
+    es_ps_df = {e_p: pandas.DataFrame(data).dropna()
+                for e_p, data in es_ps_data.items()}
     return es_ps_df
 
 
@@ -951,7 +1008,8 @@ def _fill_nones_param(exp_id, graph, para_n_inf_per_series, param_value_user, pa
             return None
         else:
             try:
-                param_value_user = float(graph['all_parameters_lookup'][exp_id][parameter_vertex['key']])
+                param_value_user = float(
+                    graph['all_parameters_lookup'][exp_id][parameter_vertex['key']])
             except KeyError:
                 return None
             except ValueError:
@@ -984,7 +1042,8 @@ def _fill_nones_influence(exp_id, graph, influence, influence_value, para_n_inf_
         else:
             # TODO reformat environment_influences_lookup i.e. flatten disregard influential values
             try:
-                influence_value = float(graph['environment_influences_lookup'][exp_id][influence['key']]['value'])
+                influence_value = float(
+                    graph['environment_influences_lookup'][exp_id][influence['key']]['value'])
             except KeyError:
                 return None
     return influence_value
@@ -992,11 +1051,12 @@ def _fill_nones_influence(exp_id, graph, influence, influence_value, para_n_inf_
 
 def filter_knowledge_graph_for_influence(graph, influence_key):
     influence = graph.vs.find(key=influence_key)
-    neighbors = graph.neighborhood(vertices=influence, order=1, mode="ALL", mindist=0)
+    neighbors = graph.neighborhood(
+        vertices=influence, order=1, mode="ALL", mindist=0)
     return graph.subgraph(neighbors)
 
 
-def update_experiment_series(graph_list: Iterable[igraph.Graph], experiment_series:dict =None):
+def update_experiment_series(graph_list: Iterable[igraph.Graph], experiment_series: dict = None):
     """
     update_experiment_series(graph_list, experiment_series = dict())
     Is needed if there are experiment id's in the experiment_series dictionary experiment that are not in the graph list

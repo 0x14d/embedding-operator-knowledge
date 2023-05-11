@@ -1,14 +1,20 @@
 from __future__ import annotations
+from functools import reduce
 
 import logging
 import os
 from collections import defaultdict
-from typing import Sequence, Callable, Iterable
+from typing import List, Sequence, Callable, Iterable, Tuple, Type, Union
 import igraph
 import pandas as pd
 
+from data_provider.synthetic_data_provider import SyntheticDataProvider
 from preprocessing import LabelEncoderForColumns
 from rule_base.rule import Rule
+from rule_base.quantified_conditions_rule \
+    import QuantifiedConditionsRule
+from rule_base.quantified_conclusions_rule \
+    import QuantifiedConclusionsRule
 from rule_base.rule_extraction import RuleExtractionMethod, BinnedMergedInfluences, kg_to_improvement_rules
 from rule_base.rule_serializer import RuleSerializer
 from utilities import Path
@@ -79,24 +85,23 @@ def prepare_evaluation_sets(ground_truth: Iterable[Rule],
             if equality_function(ground_truth_rule, prediction_rule):
                 # we substitute baseline rules with prediction rules bc they are the ones we are interested in later
                 # check  whether we already detected this rule though!
-                if prediction_rule not in shared_rules:
+                if not any([str(prediction_rule) == str(shared) for shared in shared_rules]):
                     shared_rules.append(prediction_rule)
                     substituted_rules[str(prediction_rule)] = ground_truth_rule
                 # remove it
-                if ground_truth_rule in unique_ground_truth:
-                    unique_ground_truth.remove(ground_truth_rule)
-                if prediction_rule in unique_prediction:
-                    unique_prediction.remove(prediction_rule)
+                unique_ground_truth = [gt for gt in unique_ground_truth if str(gt) != str(ground_truth_rule)]
+                unique_prediction = [pred for pred in unique_prediction if str(pred) != str(prediction_rule)]
 
-    all_rules = shared_rules + unique_ground_truth + unique_prediction
     # initialize the sets: 1 if is present in all rules 0 otherwise
     ground_truth_as_1dbool = {
-        rule: 1 if rule in shared_rules + unique_ground_truth else 0
-        for rule in all_rules
+        **{rule: 1 for rule in shared_rules},
+        **{rule: 1 for rule in unique_ground_truth},
+        **{rule: 0 for rule in unique_prediction}
     }
     prediction_as_1dbool = {
-        rule: 1 if rule in shared_rules + unique_prediction else 0
-        for rule in all_rules
+        **{rule: 1 for rule in shared_rules},
+        **{rule: 0 for rule in unique_ground_truth},
+        **{rule: 1 for rule in unique_prediction}
     }
     assert (len(ground_truth_as_1dbool) == len(prediction_as_1dbool))
     # if we have shared rules both sets should be 1 for this rule
@@ -147,7 +152,8 @@ def write_kg_rules_to_excel(
 def load_expert_survey_baseline_rules(dirname: Path,
                                       label_encoder: LabelEncoderForColumns,
                                       threshold=0.6,
-                                      version=RuleSerializer.Version.VERSION3):
+                                      version=RuleSerializer.Version.VERSION3,
+                                      **kwargs):
     """
     evaluates the expert surveys and tells you how many of the rules are accepted by the experts -- used for
     establishing a baseline of the knowledge graph
@@ -213,14 +219,39 @@ def load_expert_survey_baseline_rules(dirname: Path,
         # check whether we have a high enough degree of agreement between the experts
         if len(rules) / len(file_names) < threshold:
             continue
-        merged_rules.append(Rule.merge_rules(rules, label_encoder))
+        if version == RuleSerializer.Version.KCAP:
+            merged_rule = QuantifiedConclusionsRule.merge_rules(
+                rules, label_encoder)
+        elif version == RuleSerializer.Version.VERSION3:
+            merged_rule = QuantifiedConditionsRule.merge_rules(
+                rules, label_encoder)
+        else:
+            raise NotImplementedError(
+                f'Merging of version {version} rules isn\'t implemented')
+        merged_rules.append(merged_rule)
 
     return merged_rules, stats
 
 
+def load_synthetic_groundtruth_rules(
+    data_provider: SyntheticDataProvider,
+    label_encoder: LabelEncoderForColumns,
+    rule_class: Union[Type[QuantifiedConditionsRule], Type[QuantifiedConclusionsRule]] 
+) -> Tuple[List[Rule], None]:
+    """Loads the groundtruth rules from the synthetic data generator."""
+    relations = data_provider.data_generator.pq_relations
+    rules = reduce(
+        lambda rules, rel: rules + rel.to_rules(label_encoder, rule_class),
+        relations,
+        []
+    )
+    return rules, None
+
+
 def write_results_to_excel(groundtruth_name: str,
                            results: dict,
-                           method_substitutions=None):
+                           method_substitutions=None,
+                           base_directory: str = "./"):
     """
     creates a csv file that contains all the evaluated weight and filter methods
     You will see how many of the given rules (e.g. simplify3D) were approved in the graph at high/mid/low level
@@ -253,18 +284,20 @@ def write_results_to_excel(groundtruth_name: str,
                                             [level][method][metric]
                                         })
     df = pd.DataFrame.from_dict(reordered_dict, orient='index')
-    df.to_excel(f'overall_statistics_{groundtruth_name.lower()}.xls')
-    df.to_latex(f'overall_statistics_{groundtruth_name.lower()}.tex',
+    os.makedirs(base_directory, exist_ok=True)
+    df.to_excel(f'{base_directory}overall_statistics_{groundtruth_name.lower()}.xls')
+    df.to_latex(f'{base_directory}overall_statistics_{groundtruth_name.lower()}.tex',
                 float_format=lambda x: '%10.2f' % x,
                 escape=False)
 
 
 def write_rules_to_file(fname: str,
                         ruleset: Iterable[Rule],
-                        version=RuleSerializer.Version.UNKNOWN):
-    if not os.path.exists("rules"):
-        os.makedirs("rules")
-    with open('rules/' + fname + '.txt', 'w') as f:
+                        version=RuleSerializer.Version.UNKNOWN,
+                        base_directory: str = "./"):
+    base_directory = f'{base_directory}rules'
+    os.makedirs(base_directory, exist_ok=True)
+    with open(f'{base_directory}/{fname}.txt', 'w') as f:
         rt = RuleSerializer()
         rules = rt.serialize(ruleset,
                              output_format=RuleSerializer.Format.STRING,

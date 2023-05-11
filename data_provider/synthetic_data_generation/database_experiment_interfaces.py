@@ -15,7 +15,7 @@ from abc import ABC
 from dataclasses import dataclass
 import logging
 from datetime import datetime
-from typing import Any, Optional, Union, TypeVar, Callable, Type, cast
+from typing import Any, Optional, Union, TypeVar, Callable, Type, cast, List, Dict
 import dateutil.parser
 
 T = TypeVar("T")
@@ -24,13 +24,12 @@ T = TypeVar("T")
 def from_str(x: Any) -> str:
     if not isinstance(x, str):
         ret = str(x)
-        logging.info(f"coercing {x} of {type(x)} to string {ret}!")
         return ret
     else:
         return x
 
 
-def from_list(f: Callable[[Any], T], x: Any) -> list[T]:
+def from_list(f: Callable[[Any], T], x: Any) -> List[T]:
     assert isinstance(x, list)
     return [f(y) for y in x]
 
@@ -49,7 +48,6 @@ def from_bool(x: Any) -> bool:
     if not isinstance(x, bool):
         assert not isinstance(x, str)
         ret = bool(x)
-        logging.info(f"coercing {x} of {type(x)} to bool {ret}!")
         return ret
     return x
 
@@ -85,15 +83,15 @@ def from_int(x: Any) -> int:
     return x
 
 
-def from_dict(f: Callable[[Any], T], x: Any) -> dict[str, T]:
+def from_dict(f: Callable[[Any], T], x: Any) -> Dict[str, T]:
     assert isinstance(x, dict)
-    return { k: f(v) for (k, v) in x.items() }
+    return {k: f(v) for (k, v) in x.items()}
 
 
 @dataclass
 class AllParameterElement:
     t: str
-    v: list['AllParameterElement']
+    v: List['AllParameterElement']
 
     @staticmethod
     def from_dict(obj: Any) -> 'AllParameterElement':
@@ -105,7 +103,8 @@ class AllParameterElement:
     def to_dict(self) -> dict:
         result: dict = {}
         result["_t"] = from_str(self.t)
-        result["_v"] = from_list(lambda x: to_class(AllParameterElement, x), self.v)
+        result["_v"] = from_list(lambda x: to_class(
+            AllParameterElement, x), self.v)
         return result
 
 
@@ -128,7 +127,7 @@ class ChangedUIParameter:
         extruder = from_str(obj.get("extruder", ""))
         key = from_str(obj.get("key", label.lower().replace(" ", "_")))
         category = from_str(obj.get("category", ""))
-        return ChangedUIParameter(label, user_value, key,original_value, extruder,  category)
+        return ChangedUIParameter(label, user_value, key, original_value, extruder,  category)
 
     def to_dict(self) -> dict:
         result: dict = {}
@@ -140,11 +139,13 @@ class ChangedUIParameter:
         result["category"] = from_str(self.category)
         return result
 
+
 @dataclass
 class Parameter(ABC):
     ''' abstract base class for different kinds of parameters, which may be influential'''
     value: Union[float, str, bool]
     influential: bool
+
 
 @dataclass
 class NumericParameter(Parameter):
@@ -183,6 +184,7 @@ class StringParameter(Parameter):
         result["influential"] = from_bool(self.influential)
         return result
 
+
 @dataclass
 class BooleanParameter(Parameter):
     value: bool
@@ -201,6 +203,7 @@ class BooleanParameter(Parameter):
         result["influential"] = from_bool(self.influential)
         return result
 
+
 class ParameterBuilder:
     @staticmethod
     def build_parameter(value, influential=False):
@@ -212,6 +215,7 @@ class ParameterBuilder:
             return BooleanParameter(value, influential)
         else:
             raise TypeError("unsupported parameter type.")
+
 
 @dataclass
 class Influence:
@@ -225,22 +229,31 @@ class Influence:
     @staticmethod
     def from_dict(obj: Any) -> 'Influence':
         assert isinstance(obj, dict)
-        material_color = from_union([StringParameter.from_dict, from_none], obj.get("material_color"))
-        material_producer = from_union([StringParameter.from_dict, from_none], obj.get("material_producer"))
-        material_type = from_union([StringParameter.from_dict, from_none], obj.get("material_type"))
-        temperature = from_union([NumericParameter.from_dict, from_none], obj.get("temperature"))
-        humidity = from_union([NumericParameter.from_dict, from_none], obj.get("humidity"))
+        material_color = from_union(
+            [StringParameter.from_dict, from_none], obj.get("material_color"))
+        material_producer = from_union(
+            [StringParameter.from_dict, from_none], obj.get("material_producer"))
+        material_type = from_union(
+            [StringParameter.from_dict, from_none], obj.get("material_type"))
+        temperature = from_union(
+            [NumericParameter.from_dict, from_none], obj.get("temperature"))
+        humidity = from_union(
+            [NumericParameter.from_dict, from_none], obj.get("humidity"))
         return Influence(material_color, material_producer, material_type, temperature, humidity)
 
     def to_dict(self) -> dict:
         result: dict = {}
-        result["material_color"] = from_union([lambda x: to_class(StringParameter, x), from_none], self.material_color)
-        result["material_producer"] = from_union([lambda x: to_class(StringParameter, x), from_none], self.material_producer)
-        result["material_type"] = from_union([lambda x: to_class(StringParameter, x), from_none], self.material_type)
-        result["temperature"] = from_union([lambda x: to_class(NumericParameter, x), from_none], self.temperature)
-        result["humidity"] = from_union([lambda x: to_class(NumericParameter, x), from_none], self.humidity)
+        result["material_color"] = from_union(
+            [lambda x: to_class(StringParameter, x), from_none], self.material_color)
+        result["material_producer"] = from_union(
+            [lambda x: to_class(StringParameter, x), from_none], self.material_producer)
+        result["material_type"] = from_union(
+            [lambda x: to_class(StringParameter, x), from_none], self.material_type)
+        result["temperature"] = from_union(
+            [lambda x: to_class(NumericParameter, x), from_none], self.temperature)
+        result["humidity"] = from_union(
+            [lambda x: to_class(NumericParameter, x), from_none], self.humidity)
         return result
-
 
 
 @dataclass
@@ -308,7 +321,6 @@ class Rating:
         return result
 
 
-
 @dataclass
 class LastRatingInfluence:
     ''' a reference to the previous experiment with a remark which parameter has influenced the latest rating change'''
@@ -333,11 +345,14 @@ class LastRatingInfluence:
     def from_dict(obj: Any) -> 'LastRatingInfluence':
         assert isinstance(obj, dict)
         experiment_id = from_int(obj["experiment_id"].get("value"))
-        layer_misalignment = NumericParameter.from_dict(obj.get("layerMisalignment"))
+        layer_misalignment = NumericParameter.from_dict(
+            obj.get("layerMisalignment"))
         stringing = NumericParameter.from_dict(obj.get("stringing"))
-        line_misalignment = NumericParameter.from_dict(obj.get("lineMisalignment"))
+        line_misalignment = NumericParameter.from_dict(
+            obj.get("lineMisalignment"))
         burning = NumericParameter.from_dict(obj.get("burning"))
-        layer_separation = NumericParameter.from_dict(obj.get("layerSeparation"))
+        layer_separation = NumericParameter.from_dict(
+            obj.get("layerSeparation"))
         poor_bridging = NumericParameter.from_dict(obj.get("poorBridging"))
         over_extrusion = NumericParameter.from_dict(obj.get("overExtrusion"))
         warping = NumericParameter.from_dict(obj.get("warping"))
@@ -350,20 +365,24 @@ class LastRatingInfluence:
         overall = BooleanParameter.from_dict(obj.get("overall"))
         return LastRatingInfluence(experiment_id, layer_misalignment, overall, line_misalignment, burning, warping, layer_separation, lost_adhesion, blobs, comment, gaps, under_extrusion, stringing, poor_bridging, over_extrusion, not_labelable)
 
-
-    def to_dict(self) -> dict[str, Parameter]:
+    def to_dict(self) -> Dict[str, Parameter]:
         result: dict = {}
         result["experiment_id"] = from_int(self.experiment_id)
-        result["layerMisalignment"] = to_class(NumericParameter, self.layer_misalignment)
+        result["layerMisalignment"] = to_class(
+            NumericParameter, self.layer_misalignment)
         result["stringing"] = to_class(NumericParameter, self.stringing)
-        result["lineMisalignment"] = to_class(NumericParameter, self.line_misalignment)
+        result["lineMisalignment"] = to_class(
+            NumericParameter, self.line_misalignment)
         result["burning"] = to_class(NumericParameter, self.burning)
-        result["layerSeparation"] = to_class(NumericParameter, self.layer_separation)
+        result["layerSeparation"] = to_class(
+            NumericParameter, self.layer_separation)
         result["poorBridging"] = to_class(NumericParameter, self.poor_bridging)
-        result["overExtrusion"] = to_class(NumericParameter, self.over_extrusion)
+        result["overExtrusion"] = to_class(
+            NumericParameter, self.over_extrusion)
         result["warping"] = to_class(NumericParameter, self.warping)
         result["lostAdhesion"] = to_class(BooleanParameter, self.lost_adhesion)
-        result["underExtrusion"] = to_class(NumericParameter, self.under_extrusion)
+        result["underExtrusion"] = to_class(
+            NumericParameter, self.under_extrusion)
         result["notLabelable"] = to_class(BooleanParameter, self.not_labelable)
         result["comment"] = to_class(StringParameter, self.comment)
         result["gaps"] = to_class(NumericParameter, self.gaps)
@@ -374,41 +393,48 @@ class LastRatingInfluence:
     def to_rating(self, _user_id, _rating_date) -> Rating:
         lri_data = self.to_dict()
         del lri_data['experiment_id']
-        rating_data = {param_name: param.value for param_name, param in lri_data.items()}
+        rating_data = {param_name: param.value for param_name,
+                       param in lri_data.items()}
 
         result: Rating = Rating(_user_id,
                                 _rating_date,
                                 **rating_data)
         return result
 
+
 @dataclass
 class Insights:
     ''' insights about ratings of an experiment as entered by the expert who carried it out.'''
     comment: str
-    influences: list[Influence]
-    changed_ui_parameters: list[ChangedUIParameter]
+    influences: List[Influence]
+    changed_ui_parameters: List[ChangedUIParameter]
     user_id: str
     uncertainty: float
-    last_rating_influences: list[Union[LastRatingInfluence, None]]
+    last_rating_influences: List[Union[LastRatingInfluence, None]]
 
     @staticmethod
     def from_dict(obj: Any) -> 'Insights':
         assert isinstance(obj, dict)
         comment = from_str(obj.get("comment"))
         influences = from_list(Influence.from_dict, obj.get("influences"))
-        changed_ui_parameters = from_list(ChangedUIParameter.from_dict, obj.get("changed_ui_parameters"))
+        changed_ui_parameters = from_list(
+            ChangedUIParameter.from_dict, obj.get("changed_ui_parameters"))
         user_id = from_str(obj.get("user_id"))
-        last_rating_influences = from_list(lambda x: from_union([LastRatingInfluence.from_dict, from_none], x), obj.get("last_rating_influences"))
+        last_rating_influences = from_list(lambda x: from_union(
+            [LastRatingInfluence.from_dict, from_none], x), obj.get("last_rating_influences"))
         uncertainty = from_float(obj.get("uncertainty"))
         return Insights(comment, influences, changed_ui_parameters, user_id, uncertainty, last_rating_influences)
 
     def to_dict(self) -> dict:
         result: dict = {}
         result["comment"] = from_str(self.comment)
-        result["influences"] = from_list(lambda x: to_class(Influence, x), self.influences)
-        result["changed_ui_parameters"] = from_list(lambda x: to_class(ChangedUIParameter, x), self.changed_ui_parameters)
+        result["influences"] = from_list(
+            lambda x: to_class(Influence, x), self.influences)
+        result["changed_ui_parameters"] = from_list(lambda x: to_class(
+            ChangedUIParameter, x), self.changed_ui_parameters)
         result["user_id"] = from_str(self.user_id)
-        result["last_rating_influences"] = from_list(lambda x: from_union([lambda y: to_class(LastRatingInfluence, y), from_none], x), self.last_rating_influences)
+        result["last_rating_influences"] = from_list(lambda x: from_union(
+            [lambda y: to_class(LastRatingInfluence, y), from_none], x), self.last_rating_influences)
         result["uncertainty"] = to_float(self.uncertainty)
         return result
 
@@ -435,6 +461,7 @@ class Material:
         result["material_producer"] = from_str(self.material_producer)
         return result
 
+
 @dataclass
 class Measurement:
     ''' environmental measurements'''
@@ -458,7 +485,6 @@ class Measurement:
         return result
 
 
-
 @dataclass
 class ExperimentFromDb:
     ''' a single experiment carried out complying with the AIPE interface.'''
@@ -467,11 +493,11 @@ class ExperimentFromDb:
     stl_file_id: str
     material: Material
     oneoff: bool
-    all_parameters: dict[str, Union[bool, AllParameterElement, float, str]]
+    all_parameters: Dict[str, Union[bool, AllParameterElement, float, str]]
     insights: Insights
-    measurements: list[Measurement]
+    measurements: List[Measurement]
     completion: float
-    ratings: list[Rating]
+    ratings: List[Rating]
     series_id: str
 
     @staticmethod
@@ -482,48 +508,55 @@ class ExperimentFromDb:
         stl_file_id = from_str(obj.get("stl_file_id"))
         material = Material.from_dict(obj.get("material"))
         oneoff = from_bool(obj.get("oneoff"))
-        all_parameters = from_dict(lambda x: from_union([from_float, AllParameterElement.from_dict, from_bool, from_str], x), obj.get("all_parameters"))
+        all_parameters = from_dict(lambda x: from_union(
+            [from_float, AllParameterElement.from_dict, from_bool, from_str], x), obj.get("all_parameters"))
         insights = Insights.from_dict(obj.get("insights"))
-        measurements = from_list(Measurement.from_dict, obj.get("measurements"))
+        measurements = from_list(
+            Measurement.from_dict, obj.get("measurements"))
         completion = from_float(obj.get("completion"))
         ratings = from_list(Rating.from_dict, obj.get("ratings"))
         series_id = from_str(obj.get("series_id"))
         return ExperimentFromDb(_id, printer, stl_file_id, material, oneoff, all_parameters, insights, measurements, completion, ratings, series_id)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         result: dict = {}
         result["_id"] = from_int(self.id)
         result["printer"] = from_str(self.printer)
         result["stl_file_id"] = from_str(self.stl_file_id)
         result["material"] = to_class(Material, self.material)
         result["oneoff"] = from_bool(self.oneoff)
-        result["all_parameters"] = from_dict(lambda x: from_union([from_float, lambda y: to_class(AllParameterElement, y), from_bool, from_str], x), self.all_parameters)
+        result["all_parameters"] = from_dict(lambda x: from_union([from_float, lambda y: to_class(
+            AllParameterElement, y), from_bool, from_str], x), self.all_parameters)
         result["insights"] = to_class(Insights, self.insights)
-        result["measurements"] = from_list(lambda x: to_class(Measurement, x), self.measurements)
+        result["measurements"] = from_list(
+            lambda x: to_class(Measurement, x), self.measurements)
         result["completion"] = to_float(self.completion)
-        result["ratings"] = from_list(lambda x: to_class(Rating, x), self.ratings)
+        result["ratings"] = from_list(
+            lambda x: to_class(Rating, x), self.ratings)
         result["series_id"] = from_str(self.series_id)
         return result
 
 
-def experiment_from_db_from_dict(s: Any) -> list[ExperimentFromDb]:
+def experiment_from_db_from_dict(s: Any) -> List[ExperimentFromDb]:
     return from_list(ExperimentFromDb.from_dict, s)
 
 
-def experiment_from_db_to_dict(x: list[ExperimentFromDb]) -> Any:
+def experiment_from_db_to_dict(x: List[ExperimentFromDb]) -> Any:
     return from_list(lambda y: to_class(ExperimentFromDb, y), x)
 
 
 #                               ----  ExperimentSeries        ----
 #                          return value of "dp._determine_experiment_series_for_one_offs"
 
-ExperimentSeries = dict[str, list[int]]
+ExperimentSeries = Dict[str, List[int]]
 '''return value of `dp._determine_experiment_series_for_one_offs`. series of experiments (IDs), mapped to hash based on model, user id, printer_id & experiment id. e.g. `{'d3ZSeWbB': [5, 6]}` '''
-ExperimentDict =  dict[str, Any]
+ExperimentDict = Dict[str, Any]
 
 #                               ----  ParsedExperiment        ----
 #                          return value of "dp.parse_experiment"
 # this is unused as of right now, may be deleted later on
+
+
 @dataclass
 class ParsedExperiment:
     id: int
@@ -580,11 +613,14 @@ class ParsedExperiment:
         _id = from_int(obj.get("ID"))
         completion = from_int(obj.get("completion"))
         printer = from_str(obj.get("printer"))
-        material_print_temperature_layer_0 = from_int(obj.get("material_print_temperature_layer_0"))
-        material_bed_temperature = from_int(obj.get("material_bed_temperature"))
+        material_print_temperature_layer_0 = from_int(
+            obj.get("material_print_temperature_layer_0"))
+        material_bed_temperature = from_int(
+            obj.get("material_bed_temperature"))
         print_bed_temperature = from_int(obj.get("print_bed_temperature"))
         cool_fan_speed_min = from_int(obj.get("cool_fan_speed_min"))
-        material_bed_temperature_layer_0 = from_int(obj.get("material_bed_temperature_layer_0"))
+        material_bed_temperature_layer_0 = from_int(
+            obj.get("material_bed_temperature_layer_0"))
         speed_topbottom = from_int(obj.get("speed_topbottom"))
         speed_travel_layer_0 = from_int(obj.get("speed_travel_layer_0"))
         speed_infill = from_int(obj.get("speed_infill"))
@@ -598,13 +634,16 @@ class ParsedExperiment:
         speed_wall_x = from_int(obj.get("speed_wall_x"))
         speed_print_layer_0 = from_int(obj.get("speed_print_layer_0"))
         bridge_fan_speed = from_int(obj.get("bridge_fan_speed"))
-        retraction_extrusion_window = from_int(obj.get("retraction_extrusion_window"))
+        retraction_extrusion_window = from_int(
+            obj.get("retraction_extrusion_window"))
         speed_print = from_int(obj.get("speed_print"))
         retraction_prime_speed = from_int(obj.get("retraction_prime_speed"))
         speed_wall = from_int(obj.get("speed_wall"))
-        material_print_temperature = from_int(obj.get("material_print_temperature"))
+        material_print_temperature = from_int(
+            obj.get("material_print_temperature"))
         speed_roofing = from_int(obj.get("speed_roofing"))
-        retraction_retract_speed = from_int(obj.get("retraction_retract_speed"))
+        retraction_retract_speed = from_int(
+            obj.get("retraction_retract_speed"))
         blobs = from_int(obj.get("blobs"))
         gaps = from_int(obj.get("gaps"))
         layer_misalignment = from_int(obj.get("layer_misalignment"))
@@ -631,11 +670,14 @@ class ParsedExperiment:
         result["ID"] = from_int(self.id)
         result["completion"] = from_int(self.completion)
         result["printer"] = from_str(self.printer)
-        result["material_print_temperature_layer_0"] = from_int(self.material_print_temperature_layer_0)
-        result["material_bed_temperature"] = from_int(self.material_bed_temperature)
+        result["material_print_temperature_layer_0"] = from_int(
+            self.material_print_temperature_layer_0)
+        result["material_bed_temperature"] = from_int(
+            self.material_bed_temperature)
         result["print_bed_temperature"] = from_int(self.print_bed_temperature)
         result["cool_fan_speed_min"] = from_int(self.cool_fan_speed_min)
-        result["material_bed_temperature_layer_0"] = from_int(self.material_bed_temperature_layer_0)
+        result["material_bed_temperature_layer_0"] = from_int(
+            self.material_bed_temperature_layer_0)
         result["speed_topbottom"] = from_int(self.speed_topbottom)
         result["speed_travel_layer_0"] = from_int(self.speed_travel_layer_0)
         result["speed_infill"] = from_int(self.speed_infill)
@@ -649,13 +691,17 @@ class ParsedExperiment:
         result["speed_wall_x"] = from_int(self.speed_wall_x)
         result["speed_print_layer_0"] = from_int(self.speed_print_layer_0)
         result["bridge_fan_speed"] = from_int(self.bridge_fan_speed)
-        result["retraction_extrusion_window"] = from_int(self.retraction_extrusion_window)
+        result["retraction_extrusion_window"] = from_int(
+            self.retraction_extrusion_window)
         result["speed_print"] = from_int(self.speed_print)
-        result["retraction_prime_speed"] = from_int(self.retraction_prime_speed)
+        result["retraction_prime_speed"] = from_int(
+            self.retraction_prime_speed)
         result["speed_wall"] = from_int(self.speed_wall)
-        result["material_print_temperature"] = from_int(self.material_print_temperature)
+        result["material_print_temperature"] = from_int(
+            self.material_print_temperature)
         result["speed_roofing"] = from_int(self.speed_roofing)
-        result["retraction_retract_speed"] = from_int(self.retraction_retract_speed)
+        result["retraction_retract_speed"] = from_int(
+            self.retraction_retract_speed)
         result["blobs"] = from_int(self.blobs)
         result["gaps"] = from_int(self.gaps)
         result["layer_misalignment"] = from_int(self.layer_misalignment)

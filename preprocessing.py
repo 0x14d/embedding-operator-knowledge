@@ -40,7 +40,7 @@ class LabelEncoderForColumns:
         input_array[0][index] = str_to_transform
         return self._label_encoder.transform(input_array)[0][index]
 
-    def inverse_transform(self, int_to_transform:int, column_to_transform:str) -> str:
+    def inverse_transform(self, int_to_transform: int, column_to_transform: str) -> str:
         """
         wraps the OrdinalEncoders' inverse_transform int -> str
         :param int_to_transform:
@@ -52,7 +52,7 @@ class LabelEncoderForColumns:
         input_array[0][index] = int_to_transform
         return self._label_encoder.inverse_transform(input_array)[0][index]
 
-    def prepare_array(self, column_to_transform: str, value: Union[int,str]) -> Tuple[np.array, int]:
+    def prepare_array(self, column_to_transform: str, value: Union[int, str]) -> Tuple[np.array, int]:
         index = self._columns.index(column_to_transform)
         input_array = [cat[0] for cat in self._label_encoder.categories_]
         input_array[0][index] = value
@@ -64,6 +64,26 @@ class LabelEncoderForColumns:
         X.update(update_dataframe)
         X[columns] = X[columns].astype(np.int64)
         return X
+
+
+class OrdinalArrayEncoder(OrdinalEncoder):
+    """Wrapper of Ordinal Encoder to encode numpy arrays instead of dataframes to circumvent UserWarning: X does not have valid feature names, but OrdinalEncoder was fitted with feature name"""
+
+    def __init__(self, *, categories="auto", dtype=np.float64, handle_unknown="error", unknown_value=None):
+        super().__init__(categories=categories, dtype=dtype,
+                         handle_unknown=handle_unknown, unknown_value=unknown_value)
+
+    def fit(self, X, y=None):
+        if isinstance(X, pd.DataFrame):
+            return super().fit(X.to_numpy(), y)
+        else:
+            return super().fit(X, y)
+
+    def fit_transform(self, X, y=None, **fit_params):
+        if isinstance(X, pd.DataFrame):
+            return super().fit_transform(X.to_numpy(), y, **fit_params)
+        else:
+            return super().fit_transform(X, y, **fit_params)
 
 
 class Preprocessing:
@@ -102,7 +122,6 @@ class Preprocessing:
             X_ = X_.astype({k[:-1]: 'int32' for k in lov.keys()})
         return pd.concat([X, X_]), pd.concat([y, y_])
 
-
     @staticmethod
     def remove_artifacts(data):
         """
@@ -135,7 +154,7 @@ class Preprocessing:
         categories = ['blobs', 'gaps', 'layer_misalignment', 'layer_separation', 'over_extrusion', 'line_misalignment',
                       'stringing', 'under_extrusion', 'warping', 'poor_bridging']
 
-        temp_df = data.drop(data.columns.difference(categories), 1)
+        temp_df = data.drop(data.columns.difference(categories), axis=1)
         if weights is not None:
             ones_array = np.ones(temp_df.columns.size, dtype=int)
             ones_weights = pd.Series(ones_array, index=temp_df.columns)
@@ -202,7 +221,7 @@ class Preprocessing:
         if columns is None:
             return X, None
         # n_jobs=1: fixes some internal error...
-        column_trans = ColumnTransformer([('Label', OrdinalEncoder(dtype=np.float64), columns)], remainder='drop',
+        column_trans = ColumnTransformer([('Label', OrdinalArrayEncoder(dtype=np.float64), columns)], remainder='drop',
                                          n_jobs=-1)
         _X = column_trans.fit_transform(X)
         update_dataframe = pd.DataFrame(_X, columns=columns)
@@ -229,7 +248,7 @@ class Preprocessing:
 
         # retrieve the list of individual column entries and flatten it
         c = np.concatenate(column_trans.transformers_[0][
-                               1].categories_).tolist()
+            1].categories_).tolist()
         X_ = pd.DataFrame(X_, columns=c)
         X = pd.concat([X, X_], axis=1)
         X.drop(columns, axis=1, inplace=True)
@@ -258,7 +277,8 @@ class Preprocessing:
         parser = Preprocessing.parser(lists_of_values, 'material_types')
         X['material_type'] = X['material_type'].apply(lambda x: parser[x])
         parser = Preprocessing.parser(lists_of_values, 'material_producers')
-        X['material_producer'] = X['material_producer'].apply(lambda x: parser[x])
+        X['material_producer'] = X['material_producer'].apply(
+            lambda x: parser[x])
         parser = Preprocessing.parser(lists_of_values, 'material_colors')
         X['material_color'] = X['material_color'].apply(lambda x: parser[x])
 
@@ -336,7 +356,8 @@ class Preprocessing:
         copy_df = df.copy(True)
         # adjusting the lov
         lovcon = lov.copy()
-        lovcon['material_informations'] = str(lovcon.pop('material_types')) + ":" + str(lovcon.pop('material_producers')) + ":" + str(lovcon.pop('material_colors'))
+        lovcon['material_informations'] = str(lovcon.pop('material_types')) + ":" + str(
+            lovcon.pop('material_producers')) + ":" + str(lovcon.pop('material_colors'))
         # iteration over all columns to be concatenated
         for label in columns_to_concatenate:
             # drop the old columns
@@ -384,7 +405,8 @@ class Preprocessing:
                         # Generate the new column name for col
                         new_col_name = (col.name + ',' + other_col.name)
                         # Rename col to new_col
-                        copy_df.rename(columns={col.name: new_col_name}, inplace=True)
+                        copy_df.rename(
+                            columns={col.name: new_col_name}, inplace=True)
                         # Save the newly named parameter in col
                         col = copy_df.iloc[:, index_col]
                         # Add redundant column indice to drop set
@@ -414,9 +436,11 @@ class Preprocessing:
                         offset_dependency = (offset == offset_col).all()
                         if linear_dependency:
                             # Generate the new column name for col
-                            new_col_name = (col.name + ',' + other_col.name + '(*' + str(1 / factor) + ')')
+                            new_col_name = (
+                                col.name + ',' + other_col.name + '(*' + str(1 / factor) + ')')
                             # Rename col to new_col
-                            copy_df.rename(columns={col.name: new_col_name}, inplace=True)
+                            copy_df.rename(
+                                columns={col.name: new_col_name}, inplace=True)
                             # Save the newly named parameter in col
                             col = copy_df.iloc[:, index_col]
                             # Add redundant column indice to drop set
@@ -424,11 +448,14 @@ class Preprocessing:
                         elif offset_dependency:
                             # Generate the new column name for col
                             if offset > 0:
-                                new_col_name = (col.name + ',' + other_col.name + '(-' + str(offset) + ')')
+                                new_col_name = (
+                                    col.name + ',' + other_col.name + '(-' + str(offset) + ')')
                             else:
-                                new_col_name = (col.name + ',' + other_col.name + '(+' + str(-offset) + ')')
+                                new_col_name = (
+                                    col.name + ',' + other_col.name + '(+' + str(-offset) + ')')
                             # Rename col to new_col
-                            copy_df.rename(columns={col.name: new_col_name}, inplace=True)
+                            copy_df.rename(
+                                columns={col.name: new_col_name}, inplace=True)
                             # Save the newly named parameter in col
                             col = copy_df.iloc[:, index_col]
                             # Add redundant column indice to drop set
@@ -462,26 +489,32 @@ class Preprocessing:
         original_df, lok, lov, _, _, _ = dp.get_executed_experiments_data(include_oneoffs=i_o, completed_only=c_o,
                                                                           labelable_only=l_o)
         # completion has one corrupted element in it which is a string instead of a float which can cause crashes
-        original_df['completion'] = pd.to_numeric(original_df['completion'], errors='coerce')
+        original_df['completion'] = pd.to_numeric(
+            original_df['completion'], errors='coerce')
         if handle_nans is not None:
             if isinstance(handle_nans, int) or isinstance(handle_nans, float):
-                original_df, _, _ = Preprocessing.handle_NaNs(original_df, option='replace', default_value=handle_nans)
+                original_df, _, _ = Preprocessing.handle_NaNs(
+                    original_df, option='replace', default_value=handle_nans)
             else:
-                original_df, _, _ = Preprocessing.handle_NaNs(original_df, option=handle_nans)
+                original_df, _, _ = Preprocessing.handle_NaNs(
+                    original_df, option=handle_nans)
         if r_a:
             original_df = Preprocessing.remove_artifacts(original_df)
         if c_mi:
-            original_df, lov = Preprocessing.concat_material_information(original_df, lov)
+            original_df, lov = Preprocessing.concat_material_information(
+                original_df, lov)
         X = Preprocessing.split_DF(original_df, list(lok['ratings']))
         if m_d:
             X = Preprocessing.merge_duplicate_params(X)
         if s_x:
             X, _ = Preprocessing.standardise_columns(X,
-                    [ele for ele in X.columns.tolist() if ele not in [k[:-1] for k in lov.keys()]])
+                                                     [ele for ele in X.columns.tolist() if ele not in [k[:-1] for k in lov.keys()]])
         if encode == 'one_hot':
-            X, _ = Preprocessing.one_hot_encoding(X, [k[:-1] for k in lov.keys()])
+            X, _ = Preprocessing.one_hot_encoding(
+                X, [k[:-1] for k in lov.keys()])
         elif encode == 'label':
-            X, _ = Preprocessing.label_encoding(X, [k[:-1] for k in lov.keys()])
+            X, _ = Preprocessing.label_encoding(
+                X, [k[:-1] for k in lov.keys()])
         if r_m:
             X = X.astype(float)
             X = Preprocessing.remove_multicollinearity(X)
@@ -493,7 +526,8 @@ class Preprocessing:
         X = X.astype(float)
         if y is not None:
             if y not in Y.columns.values:
-                Exception(f"Illegal target! \nLegal targets: {Y.columns.values}")
+                Exception(
+                    f"Illegal target! \nLegal targets: {Y.columns.values}")
             else:
                 Y = Y[y]
             if isinstance(Y, pd.Series):
@@ -529,14 +563,16 @@ class Preprocessing:
         if nans_in_df:
             if option == 'impute':
                 # create, fit the imputer and use it to transform the NaNs to numbers
-                imp = SimpleImputer(missing_values=np.nan, strategy='most_frequent')
+                imp = SimpleImputer(missing_values=np.nan,
+                                    strategy='most_frequent')
                 copy_numpy = imp.fit_transform(copy_df)
                 # reconvert numpyndarray to pandas data frame
                 copy_df = pd.DataFrame(data=copy_numpy, index=list(original_df.index),
                                        columns=original_df.columns.values)
             elif option == 'replace':
                 # create, fit the imputer and use it to transform the NaNs to numbers
-                imp = SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=default_value)
+                imp = SimpleImputer(
+                    missing_values=np.nan, strategy='constant', fill_value=default_value)
                 copy_numpy = imp.fit_transform(copy_df)
                 # reconvert numpyndarray to pandas data frame
                 copy_df = pd.DataFrame(data=copy_numpy, index=list(original_df.index),
@@ -548,7 +584,8 @@ class Preprocessing:
                 # drop all rows that got NaNs in them
                 copy_df.drop(row_drop_set, axis=0, inplace=True)
                 # convert positional index (needed for dropping cols) to the experiment ID
-                row_drop_set = original_df['ID'].iloc[list(row_drop_set)].tolist()
+                row_drop_set = original_df['ID'].iloc[list(
+                    row_drop_set)].tolist()
         return copy_df, col_drop_set, row_drop_set
 
     @staticmethod
@@ -570,7 +607,8 @@ class Preprocessing:
             while vif_X['Vif'].iloc[0] == 'inf' or vif_X['Vif'].iloc[0] > max_vif:
                 if max_drops is not None and drops >= max_drops:
                     break
-                print(f"Drop #{drops + 1} with vif {vif_X['Vif'].iloc[0]}: {str(vif_X['Var'].iloc[0])}")
+                print(
+                    f"Drop #{drops + 1} with vif {vif_X['Vif'].iloc[0]}: {str(vif_X['Var'].iloc[0])}")
                 X.drop(str(vif_X['Var'].iloc[0]), axis=1, inplace=True)
                 drops += 1
                 vif_X = Preprocessing.calculate_vif(X)
@@ -584,7 +622,8 @@ class Preprocessing:
                 if max_drops is not None and drops >= max_drops:
                     break
                 maxindex = np.argmax(vifs)
-                print(f"Drop #{drops + 1} with vif {vifs[maxindex]}: {X.columns.values[maxindex]}")
+                print(
+                    f"Drop #{drops + 1} with vif {vifs[maxindex]}: {X.columns.values[maxindex]}")
                 X.drop(X.columns.values[maxindex], axis=1, inplace=True)
                 drops += 1
                 vifs = np.empty(X.shape[1])

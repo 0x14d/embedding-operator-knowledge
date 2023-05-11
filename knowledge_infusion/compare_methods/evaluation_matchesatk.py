@@ -9,8 +9,10 @@ import pandas as pd
 from data_provider.knowledge_graphs.config.knowledge_graph_generator_config import KnowledgeGraphGeneratorType
 from knowledge_infusion.compare_methods.compare_methods import matches_at_k_result
 from knowledge_infusion.compare_methods.configs.compare_methods_config import MatchesAtKConfig
+from knowledge_infusion.graph_embeddings.embedding_types import EmbeddingType
 
 INCLUDE_STD = True
+
 
 class TableCreator:
     """
@@ -33,14 +35,13 @@ class TableCreator:
             element.mean = element.mean[0]
         return loaded
 
-
     @staticmethod
     def split_by_k(entries: List[matches_at_k_result]):
         """
         Splits the data into bins by k
         """
         k_dict = dict()
-        
+
         for entry in entries:
             k = entry.k
             if k in k_dict:
@@ -50,7 +51,6 @@ class TableCreator:
 
         return k_dict
 
-
     @staticmethod
     def create_df(entries: List[matches_at_k_result]):
         """
@@ -59,11 +59,12 @@ class TableCreator:
         kgs = []
         for kgtype in KnowledgeGraphGeneratorType:
             kgs.append(kgtype.value)
-        cols = pd.MultiIndex.from_product([kgs, [1, 0], ['euc', 'jac']], names=['Representations', 'Use Head', 'Distance'])
+        cols = pd.MultiIndex.from_product([kgs, [1, 0], ['euc', 'jac']], names=[
+                                          'Representations', 'Use Head', 'Distance'])
         rows = MatchesAtKConfig().embedding_types
 
         df = pd.DataFrame(None, index=rows, columns=cols)
-        
+
         for entry in entries:
             if entry.use_head:
                 x = 1
@@ -71,10 +72,13 @@ class TableCreator:
                 x = 0
             if math.isnan(entry.mean):
                 continue
+            k = int(entry.k)
             if INCLUDE_STD:
-                df.at[entry.embedding, (entry.representation.value, x, entry.distance_measure)] = str(entry.mean.round(2)) + ' ± ' + str(round(entry.std[0],2))
+                df.at[entry.embedding, (entry.representation.value, x, entry.distance_measure)] = str(
+                    (entry.mean/k).round(2)) + ' ± ' + str(round(entry.std[0]/k, 2))
             else:
-                df.at[entry.embedding, (entry.representation.value, x, entry.distance_measure)] = entry.mean.round(2)
+                df.at[entry.embedding, (entry.representation.value,
+                                        x, entry.distance_measure)] = (entry.mean/k).round(2)
         return df
 
     @staticmethod
@@ -106,9 +110,8 @@ class TableCreator:
                 means.append(item.mean)
             element.mean = mean(means)
             element.std = [stdev(means)]
-        
-        return og
 
+        return og
 
     @staticmethod
     def save_table(table_data, k, data_folder):
@@ -116,25 +119,40 @@ class TableCreator:
             ending = "with_std"
         else:
             ending = ""
-        
+
         df = TableCreator.create_df(table_data)
         df = df.drop(columns=[
             KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITH_LITERAL,
             KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITH_SHORTCUT,
-            KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITHOUT_SHORTCUT
+            KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITH_SHORTCUT2,
+            KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITH_SHORTCUT3,
+            KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITHOUT_SHORTCUT,
+            KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITHOUT_SHORTCUT2,
+            KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_WITHOUT_SHORTCUT3,
+            KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_W3,
+            KnowledgeGraphGeneratorType.QUANTIFIED_CONDITIONS_W3_WITH_LITERAL
         ])
         df = df.transpose()
+
+        # latex friendly renames of the df
+        reps = [KnowledgeGraphGeneratorType[rep.upper(
+        )].latex_label for rep in df.index.levels[0]]
+        df.index.set_levels(reps, level=0, inplace=True)
+        head_replacement = {1: '$h$', 0: '$\\bar{h}$'}
+        heads = [head_replacement[head] for head in df.index.levels[1]]
+        df.index.set_levels(heads, level=1, inplace=True)
+        df.index.set_names("Head", level=1, inplace=True)
+        df.columns = [emb.latex_label for emb in df.columns]
 
         if not os.path.isdir(data_folder):
             os.makedirs(data_folder)
 
-        with open(data_folder + 'k' + k +'_table' + ending +'.csv', 'w') as f:
+        with open(data_folder + 'k' + k + '_table' + ending + '.csv', 'w') as f:
             df.to_csv(f, sep=";")
-        with open(data_folder + 'k' + k + '_table' + ending +'.xlsx', 'wb') as f:
+        with open(data_folder + 'k' + k + '_table' + ending + '.xlsx', 'wb') as f:
             df.to_excel(f)
-        with open(data_folder + 'k' + k +'_table' + ending +'.tex', 'w') as f:
-            df.to_latex(f)
-
+        with open(data_folder + 'k' + k + '_table' + ending + '.tex', 'w') as f:
+            df.to_latex(f, escape=False)
 
     @classmethod
     def create_tables_from_evaluation_result_pickle(cls, path):
@@ -144,11 +162,11 @@ class TableCreator:
 
         data = cls.read_init_pickle(path)
         ks = cls.split_by_k(data)
-        
+
         data_folder = path + "_table_format/"
         for key in ks.keys():
             cls.save_table(ks[key], key, data_folder)
-        
+
     @classmethod
     def combine_multiple_tables(cls, paths, final_path):
         original_k = dict()
@@ -161,28 +179,31 @@ class TableCreator:
 
             for key in ks.keys():
                 if i == 0:
-                    original_k[key] = ks[key] # First iteration is saved in here
+                    # First iteration is saved in here
+                    original_k[key] = ks[key]
                     k_list[key] = []
                 else:
                     for k in ks[key]:
-                        k_list[key].append(k) # All following iterations are saved here
+                        # All following iterations are saved here
+                        k_list[key].append(k)
         for key in ks.keys():
-            k = cls.average_data(original_k[key], k_list[key]) # Combine the first and all following iterations
+            # Combine the first and all following iterations
+            k = cls.average_data(original_k[key], k_list[key])
 
             data_folder = final_path + "_tables/"
             cls.save_table(k, key, data_folder)
 
 
 if __name__ == "__main__":
-    base_path = "knowledge_infusion/compare_methods/results/default/"
+    base_path = "knowledge_infusion/compare_methods/results/Matches/*/*/*/"
     number_iters = len(glob.glob(base_path + 'iteration*'))
+    exps = glob.glob(base_path)
 
-    paths = []
-    for i in range(number_iters):
-        paths.append(base_path + "iteration" + str(i) + "/")
-
-    for std in [True, False]:
-        INCLUDE_STD = std
-        for path in paths:
-            TableCreator.create_tables_from_evaluation_result_pickle(path)
-        TableCreator.combine_multiple_tables(paths, base_path)
+    for exp in exps:
+        for std in [True, False]:
+            INCLUDE_STD = std
+            iterations = glob.glob(exp+'iteration*/')
+            for iteration in iterations:
+                TableCreator.create_tables_from_evaluation_result_pickle(
+                    iteration)
+            TableCreator.combine_multiple_tables(iterations, exp)

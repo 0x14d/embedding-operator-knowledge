@@ -7,11 +7,8 @@ import numpy as np
 import pandas as pd
 from pandas import DataFrame
 from torch import Tensor, zeros  # pylint: disable=no-name-in-module
-from igraph import Graph
 
 from data_provider.abstract_data_provider import AbstractDataProvider
-from data_provider.synthetic_data_provider import SyntheticDataProvider
-from knowledge_extraction.rule_to_representation import get_graph_from_data_provider
 from knowledge_infusion.graph_embeddings.embedding_types import EmbeddingType
 from knowledge_infusion.graph_embeddings.embedding_config import EmbeddingConfig
 from knowledge_infusion.graph_embeddings.node_embeddings import NodeEmbeddings
@@ -28,7 +25,7 @@ class EmbeddingGenerator:
         influential_only=False,
         use_head=False,
         generate_lut=True,
-        embedding_config: EmbeddingConfig = None,
+        embedding_config: Optional[EmbeddingConfig] = None,
         test_data=False
     ):
         self.kgtype = config.kg_representation
@@ -41,7 +38,11 @@ class EmbeddingGenerator:
             influential_only=influential_only,
             data_provider=data_provider,
             sdg_config=self.config.sdg_config,
-            kg_config=self.config.aipe_kg_config
+            kg_config=self.config.aipe_kg_config,
+            knowledge_extraction_method=embedding_config.knowledge_extraction_method,
+            rule_extraction_method=embedding_config.rule_extraction_method,
+            knowledge_extraction_weight_function=embedding_config.knowledge_extraction_weight_function,
+            knowledge_extraction_filter_function=embedding_config.knowledge_extraction_filter_function
         )
 
         self._node_embeddings = NodeEmbeddings(

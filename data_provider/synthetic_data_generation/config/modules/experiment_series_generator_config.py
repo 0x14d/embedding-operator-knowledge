@@ -151,6 +151,9 @@ class ExpertKnowledgeExperimentSeriesGeneratorConfig(AbstractExperimentSeriesGen
     max_series_size: int = 15
     """Maximum number of experiments a series can have"""
 
+    noise_proportion: float = 0.0
+    """Proportion of the expert knowledge that should be noised"""
+
     def get_generator_class(self):
         from data_provider.synthetic_data_generation.modules.experiment_series_generators. \
         expert_knowledge_experiment_series_generator import ExpertKnowledgeExperimentSeriesGenerator
